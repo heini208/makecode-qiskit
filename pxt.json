@@ -1,12 +1,12 @@
 {
     "name": "qiskit",
-    "description": "",
+    "description": "Local quantum circuit simulation for the Calliope mini",
     "dependencies": {
         "core": "*",
         "v3": "*"
     },
     "files": [
-        "main.blocks",
+        "microqiskit.ts",
         "main.ts",
         "README.md"
     ],
