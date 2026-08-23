@@ -610,6 +610,9 @@ namespace microQiskitRuntime {
     }
 
     function sendIBMLine(line: string): void {
+        // A user's serial.writeString() may have left an unfinished line.
+        // Terminate it so bridge protocol messages always start at column 1.
+        serial.writeLine("")
         serial.writeLine(line)
         basic.pause(5)
     }
@@ -1111,9 +1114,6 @@ namespace microQiskitRuntime {
         job.status = "submitting"
         jobs.push(job)
 
-        // Finish any user-written serial line before beginning the protocol.
-        serial.writeLine("")
-        basic.pause(20)
         sendIBMDebug(
             "INFO",
             "Sending " + jobId + " with " + circuit.data.length +
@@ -1330,10 +1330,13 @@ namespace microQiskitRuntime {
         const job = getJob(jobId)
 
         if (!job) {
+            initializeIBMSerial()
+            sendIBMDebug("ERROR", lastError)
             return ""
         }
 
         if (job.source == "ibm") {
+            sendIBMDebug("INFO", "Requesting status for job " + job.id)
             const previousStatusResponseCounter = job.statusResponseCounter
             sendIBMLine("IBMQ_GET_STATUS|" + job.id)
 
@@ -1348,7 +1351,14 @@ namespace microQiskitRuntime {
     export function isJobFinished(jobId: string): boolean {
         clearError()
         const job = getJob(jobId)
-        return job ? job.status == "done" || job.status == "failed" : false
+
+        if (!job) {
+            initializeIBMSerial()
+            sendIBMDebug("ERROR", lastError)
+            return false
+        }
+
+        return job.status == "done" || job.status == "failed"
     }
 
     export function getJobError(jobId: string): string {
