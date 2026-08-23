@@ -17,6 +17,14 @@ namespace microQiskit {
         RZ
     }
 
+    /** Selects how a job result is printed to USB serial. */
+    export enum SerialResultView {
+        Summary,
+        OneShot,
+        Counts,
+        Status
+    }
+
     /** Creates a MicroQiskit quantum circuit. */
     //% blockId=microqiskit_create_circuit
     //% block="create circuit with $numQubits qubits and $numClbits classical bits"
@@ -413,6 +421,18 @@ namespace microQiskit {
     //% jobId.shadow=variables_get jobId.defl=job
     export function getJobError(jobId: string): string {
         return microQiskitRuntime.getJobError(jobId)
+    }
+
+    /** Prints a readable result for either a local or IBM job to USB serial. */
+    //% blockId=microqiskit_print_job_serial
+    //% block="print $view for job $jobId to serial"
+    //% subcategory="Qiskit basic" group="Results" weight=55
+    //% jobId.shadow=variables_get jobId.defl=job
+    export function printJobToSerial(
+        jobId: string,
+        view: SerialResultView = SerialResultView.Summary
+    ): void {
+        microQiskitRuntime.printJobToSerial(jobId, view)
     }
 
     /** Returns one shot as a list with classical bit 0 first. */

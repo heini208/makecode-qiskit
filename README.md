@@ -65,6 +65,12 @@ sofort fertig; bei einem IBM-Job kann mit **job is finished** gewartet und mit
 **status of job** der aktuelle Zustand angezeigt werden. Bei nur einem Shot ist
 **bit list result** ein einzelnes echtes Messergebnis des IBM-Quantencomputers.
 
+Mit **print summary for job to serial** lassen sich Ergebnisse ohne LED-Matrix
+lesbar ausgeben. Das Dropdown bietet außerdem **One shot**, **Counts** und
+**Status**. Bei einem IBM-Job erscheint die Ausgabe im Nachrichtenfenster des
+PC-Programms; lokale Ergebnisse können auch mit einem normalen seriellen
+Monitor gelesen werden.
+
 #### Metadaten (verwendet für Suche, Rendering)
 
 * for PXT/calliopemini

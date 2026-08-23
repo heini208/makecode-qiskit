@@ -593,6 +593,103 @@ namespace microQiskitRuntime {
         basic.pause(5)
     }
 
+    function jobSourceLabel(job: Job): string {
+        return job.source == "ibm" ? "IBM Quantum" : "Local simulation"
+    }
+
+    function countPercentage(count: number, shots: number): number {
+        if (shots <= 0) {
+            return 0
+        }
+
+        return Math.round(1000 * count / shots) / 10
+    }
+
+    function printJobCounts(job: Job): void {
+        if (job.countLabels.length == 0) {
+            if (job.status == "failed") {
+                sendIBMLine("Error: " + job.error)
+            } else {
+                sendIBMLine("Results are not ready. Status: " + job.status)
+            }
+            return
+        }
+
+        sendIBMLine("Counts:")
+
+        for (let i = 0; i < job.countLabels.length; i++) {
+            const count = job.counts[i]
+            sendIBMLine(
+                "  " + job.countLabels[i] + ": " + count + " / " + job.shots +
+                " (" + countPercentage(count, job.shots) + "%)"
+            )
+        }
+    }
+
+    export function printJobToSerial(jobId: string, view: number): void {
+        clearError()
+        const job = getJob(jobId)
+
+        initializeIBMSerial()
+
+        if (!job) {
+            sendIBMLine("MicroQiskit error: job not found: " + jobId)
+            return
+        }
+
+        if (view == 3) {
+            sendIBMLine(
+                "Qiskit job " + job.id + ": " + job.status +
+                " (" + jobSourceLabel(job) + ")"
+            )
+            return
+        }
+
+        if (view == 1) {
+            if (job.memory.length > 0) {
+                sendIBMLine(
+                    "Qiskit job " + job.id + " first shot (highest bit first): " +
+                    job.memory[0]
+                )
+            } else if (job.status == "failed") {
+                sendIBMLine("Qiskit job " + job.id + " failed: " + job.error)
+            } else {
+                sendIBMLine(
+                    "Qiskit job " + job.id + " result is not ready. Status: " +
+                    job.status
+                )
+            }
+            return
+        }
+
+        if (view == 2) {
+            sendIBMLine("=== Qiskit counts: " + job.id + " ===")
+            printJobCounts(job)
+            sendIBMLine("==============================")
+            return
+        }
+
+        sendIBMLine("=== Qiskit job: " + job.id + " ===")
+        sendIBMLine("Run on: " + jobSourceLabel(job))
+        sendIBMLine("Status: " + job.status)
+        sendIBMLine("Shots: " + job.shots)
+
+        if (job.source == "ibm" && job.backend != "") {
+            sendIBMLine("IBM system: " + job.backend)
+        }
+
+        if (job.source == "ibm" && job.remoteJobId != "") {
+            sendIBMLine("IBM job ID: " + job.remoteJobId)
+        }
+
+        if (job.memory.length > 0) {
+            sendIBMLine("First shot (highest bit first): " + job.memory[0])
+        }
+
+        printJobCounts(job)
+        sendIBMLine("============================")
+    }
+
     function runWithNoise(circuitId: string, shots: number, noiseModel: number[]): string {
         clearError()
         const circuit = getCircuit(circuitId)
