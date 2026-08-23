@@ -277,6 +277,19 @@ namespace microQiskit {
         return microQiskitRuntime.runSimulation(circuitId, shots)
     }
 
+    /** Runs a circuit on real IBM Quantum hardware through the connected PC app. */
+    //% blockId=microqiskit_run_ibm_quantum
+    //% block="run circuit $circuitId on IBM Quantum with $shots shots"
+    //% subcategory="Qiskit basic" group="Simulation" weight=90 blockSetVariable=job
+    //% circuitId.shadow=variables_get circuitId.defl=circuit
+    //% shots.min=1 shots.max=2048 shots.defl=1024
+    export function runOnIBMQuantum(
+        circuitId: string,
+        shots: number = 1024
+    ): string {
+        return microQiskitRuntime.runOnIBMQuantum(circuitId, shots)
+    }
+
     /** Runs with the same final measurement-error probability on every qubit. */
     //% blockId=microqiskit_run_uniform_noise
     //% block="run circuit $circuitId with $shots shots and measurement error $errorProbability"
@@ -373,6 +386,33 @@ namespace microQiskit {
     //% jobId.shadow=variables_get jobId.defl=job
     export function getJobShots(jobId: string): number {
         return microQiskitRuntime.getJobShots(jobId)
+    }
+
+    /** Returns the status for either a local or an IBM job. */
+    //% blockId=microqiskit_job_status
+    //% block="status of job $jobId"
+    //% subcategory="Qiskit basic" group="Results" weight=98
+    //% jobId.shadow=variables_get jobId.defl=job
+    export function getJobStatus(jobId: string): string {
+        return microQiskitRuntime.getJobStatus(jobId)
+    }
+
+    /** Reports whether either a local or an IBM job has finished. */
+    //% blockId=microqiskit_job_finished
+    //% block="job $jobId is finished"
+    //% subcategory="Qiskit basic" group="Results" weight=97
+    //% jobId.shadow=variables_get jobId.defl=job
+    export function isJobFinished(jobId: string): boolean {
+        return microQiskitRuntime.isJobFinished(jobId)
+    }
+
+    /** Returns an error from a failed job, or an empty string. */
+    //% blockId=microqiskit_job_error
+    //% block="error from job $jobId"
+    //% subcategory="Qiskit basic" group="Results" weight=60
+    //% jobId.shadow=variables_get jobId.defl=job
+    export function getJobError(jobId: string): string {
+        return microQiskitRuntime.getJobError(jobId)
     }
 
     /** Returns one shot as a list with classical bit 0 first. */

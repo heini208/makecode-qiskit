@@ -52,6 +52,19 @@ MakeCode-Programm auf dem Calliope. Die manuelle Portauswahl bleibt als Fallback
 verfügbar; ein vorhandener `HELLO`/`HELLO_ACK`-Handshake wird weiterhin
 beantwortet, ist aber nicht erforderlich.
 
+### Lokale und echte IBM-Jobs
+
+Der Block **run circuit locally** simuliert den Schaltkreis sofort auf dem
+Calliope. Der Block **run circuit on IBM Quantum** sendet denselben Schaltkreis
+über USB an das PC-Programm und startet dort einen echten `SamplerV2`-Job. Das
+PC-Programm muss dafür geöffnet und mit IBM sowie dem Calliope verbunden sein.
+
+Beide Run-Blöcke geben dieselbe Art von Job-ID zurück. Deshalb funktionieren
+die gleichen Ergebnisblöcke für lokale und echte Jobs. Ein lokaler Job ist
+sofort fertig; bei einem IBM-Job kann mit **job is finished** gewartet und mit
+**status of job** der aktuelle Zustand angezeigt werden. Bei nur einem Shot ist
+**bit list result** ein einzelnes echtes Messergebnis des IBM-Quantencomputers.
+
 #### Metadaten (verwendet für Suche, Rendering)
 
 * for PXT/calliopemini

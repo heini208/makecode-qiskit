@@ -69,10 +69,14 @@ class QiskitBridgeApp(tk.Tk):
         self.events: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.ibm_service: Any | None = None
         self.serial_connection: Any | None = None
+        self.serial_write_lock = threading.Lock()
         self.serial_stop = threading.Event()
         self.serial_thread: threading.Thread | None = None
         self.port_devices: dict[str, str] = {}
         self.serial_port_info: dict[str, Any] = {}
+        self.incoming_circuits: dict[str, dict[str, Any]] = {}
+        self.active_ibm_jobs: set[str] = set()
+        self.ibm_jobs_lock = threading.Lock()
         self.dashboard_visible = False
         self.closing = False
 
@@ -590,9 +594,215 @@ class QiskitBridgeApp(tk.Tk):
             self.events.put(("serial_received", message))
 
             if message == "HELLO":
-                connection.write(b"HELLO_ACK\n")
+                self.send_calliope("HELLO_ACK")
+            elif message.startswith("IBMQ_"):
+                self.handle_ibm_protocol_message(message)
+
+    def send_calliope(self, message: str) -> bool:
+        """Send one protocol line without interleaving concurrent IBM jobs."""
+        connection = self.serial_connection
+        if connection is None:
+            self.events.put(
+                ("bridge_log", f"PC: Could not send while Calliope is disconnected: {message}")
+            )
+            return False
+
+        try:
+            with self.serial_write_lock:
+                connection.write((message + "\n").encode("utf-8"))
                 connection.flush()
-                self.events.put(("serial_sent", "HELLO_ACK"))
+                time.sleep(0.01)
+        except Exception as exc:
+            self.events.put(("bridge_log", f"PC: Serial send failed: {exc}"))
+            return False
+
+        self.events.put(("serial_sent", message))
+        return True
+
+    def protocol_error(self, request_id: str, message: str) -> None:
+        safe_message = self.safe_protocol_text(message)
+        self.send_calliope(f"IBMQ_ERROR|{request_id}|{safe_message}")
+
+    @staticmethod
+    def safe_protocol_text(message: str) -> str:
+        return message.replace("|", "/").replace("\r", " ").replace("\n", " ")[:180]
+
+    def handle_ibm_protocol_message(self, message: str) -> None:
+        """Collect a framed Calliope circuit and start its IBM job."""
+        parts = message.split("|")
+        message_kind = parts[0]
+        request_id = parts[1] if len(parts) >= 2 else "unknown"
+
+        try:
+            if message_kind == "IBMQ_BEGIN":
+                if len(parts) != 5:
+                    raise ValueError("Invalid circuit header")
+                if not request_id or not all(
+                    character.isalnum() or character in "_-" for character in request_id
+                ):
+                    raise ValueError("Invalid request ID")
+
+                num_qubits = int(parts[2])
+                num_clbits = int(parts[3])
+                shots = int(parts[4])
+                if num_qubits < 1 or num_qubits > 8:
+                    raise ValueError("Qubit count must be between 1 and 8")
+                if num_clbits < 1 or num_clbits > 8:
+                    raise ValueError("Classical bit count must be between 1 and 8")
+                if shots < 1 or shots > 2048:
+                    raise ValueError("Shots must be between 1 and 2048")
+
+                with self.ibm_jobs_lock:
+                    if request_id in self.active_ibm_jobs:
+                        raise ValueError("This IBM job is already active")
+                self.incoming_circuits[request_id] = {
+                    "request_id": request_id,
+                    "num_qubits": num_qubits,
+                    "num_clbits": num_clbits,
+                    "shots": shots,
+                    "gates": [],
+                }
+                return
+
+            if message_kind == "IBMQ_GATE":
+                if len(parts) != 6 or request_id not in self.incoming_circuits:
+                    raise ValueError("Gate received without a circuit header")
+                request = self.incoming_circuits[request_id]
+                if len(request["gates"]) >= 1000:
+                    raise ValueError("Circuit has too many operations")
+                request["gates"].append(
+                    {
+                        "kind": parts[2].lower(),
+                        "qubit": int(parts[3]),
+                        "target": int(parts[4]),
+                        "theta": float(parts[5]),
+                    }
+                )
+                return
+
+            if message_kind == "IBMQ_END":
+                if len(parts) != 2 or request_id not in self.incoming_circuits:
+                    raise ValueError("Circuit end received without a circuit header")
+                request = self.incoming_circuits.pop(request_id)
+                if self.ibm_service is None:
+                    raise ValueError("IBM Quantum is not connected")
+                with self.ibm_jobs_lock:
+                    self.active_ibm_jobs.add(request_id)
+                threading.Thread(
+                    target=self.ibm_job_worker,
+                    args=(request, self.ibm_service),
+                    daemon=True,
+                ).start()
+                return
+
+            raise ValueError("Unknown IBM protocol message")
+        except (TypeError, ValueError) as exc:
+            self.incoming_circuits.pop(request_id, None)
+            self.protocol_error(request_id, str(exc))
+
+    def ibm_job_worker(self, request: dict[str, Any], service: Any) -> None:
+        """Build, transpile, execute and return one real IBM Sampler job."""
+        request_id = request["request_id"]
+
+        try:
+            from qiskit import QuantumCircuit
+            from qiskit.transpiler import generate_preset_pass_manager
+            from qiskit_ibm_runtime import SamplerV2
+
+            circuit = QuantumCircuit(
+                request["num_qubits"],
+                request["num_clbits"],
+            )
+            measurement_count = 0
+
+            for gate in request["gates"]:
+                kind = gate["kind"]
+                qubit = gate["qubit"]
+                target = gate["target"]
+                theta = gate["theta"]
+
+                if qubit < 0 or qubit >= request["num_qubits"]:
+                    raise ValueError(f"Qubit index out of range: {qubit}")
+
+                if kind in {"x", "y", "z", "h"}:
+                    getattr(circuit, kind)(qubit)
+                elif kind in {"rx", "ry", "rz"}:
+                    getattr(circuit, kind)(theta, qubit)
+                elif kind in {"cx", "crx"}:
+                    if target < 0 or target >= request["num_qubits"]:
+                        raise ValueError(f"Target qubit out of range: {target}")
+                    if kind == "cx":
+                        circuit.cx(qubit, target)
+                    else:
+                        circuit.crx(theta, qubit, target)
+                elif kind == "measure":
+                    if target < 0 or target >= request["num_clbits"]:
+                        raise ValueError(f"Classical bit out of range: {target}")
+                    circuit.measure(qubit, target)
+                    measurement_count += 1
+                else:
+                    raise ValueError(f"Unsupported IBM gate: {kind}")
+
+            if measurement_count == 0:
+                raise ValueError("The circuit needs at least one measurement")
+
+            self.send_calliope(f"IBMQ_STATUS|{request_id}|SELECTING_QPU")
+            backend = service.least_busy(
+                operational=True,
+                simulator=False,
+                min_num_qubits=request["num_qubits"],
+            )
+            selected_backend_name = backend_name(backend)
+
+            self.send_calliope(f"IBMQ_STATUS|{request_id}|TRANSPILING")
+            pass_manager = generate_preset_pass_manager(
+                backend=backend,
+                optimization_level=1,
+            )
+            isa_circuit = pass_manager.run(circuit)
+
+            sampler = SamplerV2(mode=backend)
+            runtime_job = sampler.run([isa_circuit], shots=request["shots"])
+            remote_job_id = runtime_job.job_id()
+            self.send_calliope(
+                f"IBMQ_ACCEPTED|{request_id}|{remote_job_id}|{selected_backend_name}"
+            )
+
+            last_status = ""
+            while True:
+                status_value = runtime_job.status()
+                status = getattr(status_value, "name", str(status_value))
+                status = status.split(".")[-1].upper()
+                if status != last_status:
+                    self.send_calliope(f"IBMQ_STATUS|{request_id}|{status}")
+                    last_status = status
+                if status in {"DONE", "ERROR", "CANCELLED"}:
+                    break
+                time.sleep(3)
+
+            result = runtime_job.result()
+            data = result[0].data
+            bit_array = getattr(data, "c", None)
+            if bit_array is None:
+                keys = list(data.keys())
+                if not keys:
+                    raise ValueError("IBM returned no classical measurement data")
+                bit_array = data[keys[0]]
+
+            bitstrings = bit_array.get_bitstrings()
+            counts = bit_array.get_counts()
+            if bitstrings:
+                self.send_calliope(f"IBMQ_SHOT|{request_id}|{bitstrings[0]}")
+            for label in sorted(counts):
+                self.send_calliope(
+                    f"IBMQ_COUNT|{request_id}|{label}|{counts[label]}"
+                )
+            self.send_calliope(f"IBMQ_DONE|{request_id}|{len(bitstrings)}")
+        except Exception as exc:
+            self.protocol_error(request_id, str(exc))
+        finally:
+            with self.ibm_jobs_lock:
+                self.active_ibm_jobs.discard(request_id)
 
     def disconnect_calliope(self) -> None:
         self.serial_stop.set()
@@ -711,6 +921,8 @@ class QiskitBridgeApp(tk.Tk):
             self.log_message(f"Calliope -> PC: {payload}")
         elif event_name == "serial_sent":
             self.log_message(f"PC -> Calliope: {payload}")
+        elif event_name == "bridge_log":
+            self.log_message(str(payload))
         elif event_name == "ibm_check_ok":
             self.ibm_status_label.configure(
                 text="● IBM Quantum: Connected",

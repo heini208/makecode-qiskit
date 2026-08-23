@@ -59,6 +59,11 @@ namespace microQiskitRuntime {
         id: string
         circuitId: string
         shots: number
+        source: string
+        status: string
+        remoteJobId: string
+        backend: string
+        error: string
         memory: string[]
         countLabels: string[]
         counts: number[]
@@ -71,6 +76,11 @@ namespace microQiskitRuntime {
             this.id = id
             this.circuitId = circuitId
             this.shots = shots
+            this.source = "local"
+            this.status = "done"
+            this.remoteJobId = ""
+            this.backend = ""
+            this.error = ""
             this.memory = []
             this.countLabels = []
             this.counts = []
@@ -86,6 +96,7 @@ namespace microQiskitRuntime {
     let nextCircuitId = 1
     let nextJobId = 1
     let lastError = ""
+    let ibmSerialInitialized = false
 
     function setError(message: string): void {
         lastError = message
@@ -507,6 +518,81 @@ namespace microQiskitRuntime {
         job.counts.insertAt(insertAt, 1)
     }
 
+    function setCount(job: Job, label: string, count: number): void {
+        for (let i = 0; i < job.countLabels.length; i++) {
+            if (job.countLabels[i] == label) {
+                job.counts[i] = count
+                return
+            }
+        }
+
+        let insertAt = job.countLabels.length
+
+        for (let i = 0; i < job.countLabels.length; i++) {
+            if (label < job.countLabels[i]) {
+                insertAt = i
+                break
+            }
+        }
+
+        job.countLabels.insertAt(insertAt, label)
+        job.counts.insertAt(insertAt, count)
+    }
+
+    function handleIBMSerialMessage(message: string): void {
+        const parts = message.split("|")
+
+        if (parts.length < 2) {
+            return
+        }
+
+        const messageKind = parts[0]
+        const job = getJob(parts[1])
+
+        if (!job || job.source != "ibm") {
+            return
+        }
+
+        if (messageKind == "IBMQ_ACCEPTED" && parts.length >= 4) {
+            job.remoteJobId = parts[2]
+            job.backend = parts[3]
+            job.status = "queued"
+        } else if (messageKind == "IBMQ_STATUS" && parts.length >= 3) {
+            job.status = parts[2].toLowerCase()
+        } else if (messageKind == "IBMQ_SHOT" && parts.length >= 3) {
+            job.memory = [parts[2]]
+        } else if (messageKind == "IBMQ_COUNT" && parts.length >= 4) {
+            setCount(job, parts[2], parseInt(parts[3]))
+        } else if (messageKind == "IBMQ_DONE") {
+            if (parts.length >= 3) {
+                job.shots = parseInt(parts[2])
+            }
+            job.status = "done"
+        } else if (messageKind == "IBMQ_ERROR" && parts.length >= 3) {
+            job.error = parts[2]
+            job.status = "failed"
+        }
+    }
+
+    function initializeIBMSerial(): void {
+        if (ibmSerialInitialized) {
+            return
+        }
+
+        ibmSerialInitialized = true
+        serial.redirectToUSB()
+        serial.setRxBufferSize(512)
+        serial.setTxBufferSize(512)
+        serial.onDataReceived("\n", function () {
+            handleIBMSerialMessage(serial.readUntil("\n"))
+        })
+    }
+
+    function sendIBMLine(line: string): void {
+        serial.writeLine(line)
+        basic.pause(5)
+    }
+
     function runWithNoise(circuitId: string, shots: number, noiseModel: number[]): string {
         clearError()
         const circuit = getCircuit(circuitId)
@@ -779,6 +865,55 @@ namespace microQiskitRuntime {
         return runWithNoise(circuitId, shots, [])
     }
 
+    export function runOnIBMQuantum(circuitId: string, shots: number = 1024): string {
+        clearError()
+        const circuit = getCircuit(circuitId)
+
+        if (!circuit) {
+            return ""
+        }
+
+        if (shots < 1 || shots > MAX_SHOTS || shots != Math.floor(shots)) {
+            setError("Shots must be between 1 and " + MAX_SHOTS)
+            return ""
+        }
+
+        if (!measurementMap(circuit)) {
+            return ""
+        }
+
+        for (let i = 0; i < circuit.data.length; i++) {
+            if (circuit.data[i].kind == "initialize") {
+                setError("Custom initial states are not supported on IBM hardware")
+                return ""
+            }
+        }
+
+        const jobId = "job" + nextJobId
+        nextJobId += 1
+        const job = new Job(jobId, circuitId, shots)
+        job.source = "ibm"
+        job.status = "submitting"
+        jobs.push(job)
+
+        initializeIBMSerial()
+        sendIBMLine(
+            "IBMQ_BEGIN|" + jobId + "|" + circuit.numQubits + "|" +
+            circuit.numClbits + "|" + shots
+        )
+
+        for (let i = 0; i < circuit.data.length; i++) {
+            const gate = circuit.data[i]
+            sendIBMLine(
+                "IBMQ_GATE|" + jobId + "|" + gate.kind + "|" + gate.qubit +
+                "|" + gate.target + "|" + gate.theta
+            )
+        }
+
+        sendIBMLine("IBMQ_END|" + jobId)
+        return jobId
+    }
+
     export function runSimulationWithUniformNoise(
         circuitId: string,
         shots: number,
@@ -960,6 +1095,24 @@ namespace microQiskitRuntime {
         clearError()
         const job = getJob(jobId)
         return job ? job.shots : 0
+    }
+
+    export function getJobStatus(jobId: string): string {
+        clearError()
+        const job = getJob(jobId)
+        return job ? job.status : ""
+    }
+
+    export function isJobFinished(jobId: string): boolean {
+        clearError()
+        const job = getJob(jobId)
+        return job ? job.status == "done" || job.status == "failed" : false
+    }
+
+    export function getJobError(jobId: string): string {
+        clearError()
+        const job = getJob(jobId)
+        return job ? job.error : ""
     }
 
     export function getJobProbabilityLabels(jobId: string): string[] {
