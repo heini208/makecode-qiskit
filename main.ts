@@ -1,6 +1,21 @@
 //% color="#6f42c1" weight=80 icon="\uf0c3" block="MicroQiskit"
 //% groups='["Circuits", "Gates", "Measurement", "Simulation", "Results", "Statevector", "Advanced"]'
 namespace microQiskit {
+    /** Basic single-qubit gates. */
+    export enum BasicGate {
+        H,
+        X,
+        Y,
+        Z
+    }
+
+    /** Single-qubit rotation gates. */
+    export enum RotationGate {
+        RX,
+        RY,
+        RZ
+    }
+
     /** Creates a MicroQiskit quantum circuit. */
     //% blockId=microqiskit_create_circuit
     //% block="create circuit with $numQubits qubits and $numClbits classical bits"
@@ -63,10 +78,54 @@ namespace microQiskit {
         return microQiskitRuntime.getCircuitClassicalBitCount(circuitId)
     }
 
+    /** Applies a basic single-qubit gate selected from the dropdown. */
+    //% blockId=microqiskit_apply_basic_gate
+    //% block="apply $gate to circuit $circuitId on qubit $qubit"
+    //% group="Gates" weight=100
+    //% circuitId.shadow=variables_get circuitId.defl=circuit
+    //% qubit.min=0 qubit.max=7 qubit.defl=0
+    export function applyBasicGate(
+        circuitId: string,
+        gate: BasicGate = BasicGate.H,
+        qubit: number = 0
+    ): void {
+        if (gate == BasicGate.H) {
+            microQiskitRuntime.applyH(circuitId, qubit)
+        } else if (gate == BasicGate.X) {
+            microQiskitRuntime.applyX(circuitId, qubit)
+        } else if (gate == BasicGate.Y) {
+            microQiskitRuntime.applyY(circuitId, qubit)
+        } else {
+            microQiskitRuntime.applyZ(circuitId, qubit)
+        }
+    }
+
+    /** Applies a rotation gate selected from the dropdown. The angle is in radians. */
+    //% blockId=microqiskit_apply_rotation_gate
+    //% block="apply $gate angle $theta to circuit $circuitId on qubit $qubit"
+    //% group="Gates" weight=90 inlineInputMode=external
+    //% circuitId.shadow=variables_get circuitId.defl=circuit
+    //% theta.defl=1.57079632679
+    //% qubit.min=0 qubit.max=7 qubit.defl=0
+    export function applyRotationGate(
+        circuitId: string,
+        gate: RotationGate = RotationGate.RX,
+        theta: number = 1.57079632679,
+        qubit: number = 0
+    ): void {
+        if (gate == RotationGate.RX) {
+            microQiskitRuntime.applyRX(circuitId, theta, qubit)
+        } else if (gate == RotationGate.RY) {
+            microQiskitRuntime.applyRY(circuitId, theta, qubit)
+        } else {
+            microQiskitRuntime.applyRZ(circuitId, theta, qubit)
+        }
+    }
+
     /** Applies a Pauli X gate. */
     //% blockId=microqiskit_apply_x
     //% block="apply X to circuit $circuitId on qubit $qubit"
-    //% group="Gates" weight=100
+    //% group="Gates" weight=100 blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% qubit.min=0 qubit.max=7 qubit.defl=0
     export function applyX(circuitId: string, qubit: number = 0): void {
@@ -76,7 +135,7 @@ namespace microQiskit {
     /** Applies a Pauli Y gate. */
     //% blockId=microqiskit_apply_y
     //% block="apply Y to circuit $circuitId on qubit $qubit"
-    //% group="Gates" weight=95
+    //% group="Gates" weight=95 blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% qubit.min=0 qubit.max=7 qubit.defl=0
     export function applyY(circuitId: string, qubit: number = 0): void {
@@ -86,7 +145,7 @@ namespace microQiskit {
     /** Applies a Pauli Z gate. */
     //% blockId=microqiskit_apply_z
     //% block="apply Z to circuit $circuitId on qubit $qubit"
-    //% group="Gates" weight=90
+    //% group="Gates" weight=90 blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% qubit.min=0 qubit.max=7 qubit.defl=0
     export function applyZ(circuitId: string, qubit: number = 0): void {
@@ -96,7 +155,7 @@ namespace microQiskit {
     /** Applies a Hadamard gate. */
     //% blockId=microqiskit_apply_h
     //% block="apply H to circuit $circuitId on qubit $qubit"
-    //% group="Gates" weight=85
+    //% group="Gates" weight=85 blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% qubit.min=0 qubit.max=7 qubit.defl=0
     export function applyH(circuitId: string, qubit: number = 0): void {
@@ -106,7 +165,7 @@ namespace microQiskit {
     /** Applies an X-axis rotation. The angle is in radians. */
     //% blockId=microqiskit_apply_rx
     //% block="apply RX angle $theta to circuit $circuitId on qubit $qubit"
-    //% group="Gates" weight=80 inlineInputMode=external
+    //% group="Gates" weight=80 inlineInputMode=external blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% theta.defl=1.57079632679
     //% qubit.min=0 qubit.max=7 qubit.defl=0
@@ -121,7 +180,7 @@ namespace microQiskit {
     /** Applies a Y-axis rotation. The angle is in radians. */
     //% blockId=microqiskit_apply_ry
     //% block="apply RY angle $theta to circuit $circuitId on qubit $qubit"
-    //% group="Gates" weight=75 inlineInputMode=external
+    //% group="Gates" weight=75 inlineInputMode=external blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% theta.defl=1.57079632679
     //% qubit.min=0 qubit.max=7 qubit.defl=0
@@ -136,7 +195,7 @@ namespace microQiskit {
     /** Applies a Z-axis rotation. The angle is in radians. */
     //% blockId=microqiskit_apply_rz
     //% block="apply RZ angle $theta to circuit $circuitId on qubit $qubit"
-    //% group="Gates" weight=70 inlineInputMode=external
+    //% group="Gates" weight=70 inlineInputMode=external blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% theta.defl=1.57079632679
     //% qubit.min=0 qubit.max=7 qubit.defl=0
