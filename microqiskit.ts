@@ -563,9 +563,15 @@ namespace microQiskitRuntime {
             job.remoteJobId = parts[2]
             job.backend = parts[3]
             job.status = "queued"
+            sendIBMDebug(
+                "INFO",
+                "Job " + job.id + " accepted by IBM as " + job.remoteJobId +
+                " on " + job.backend
+            )
         } else if (messageKind == "IBMQ_STATUS" && parts.length >= 3) {
             job.status = parts[2].toLowerCase()
             job.statusResponseCounter += 1
+            sendIBMDebug("INFO", "Job " + job.id + " status: " + job.status)
         } else if (messageKind == "IBMQ_SHOT" && parts.length >= 3) {
             job.memory = [parts[2]]
         } else if (messageKind == "IBMQ_COUNT" && parts.length >= 4) {
@@ -576,11 +582,16 @@ namespace microQiskitRuntime {
             }
             job.status = "done"
             job.resultResponseCounter += 1
+            sendIBMDebug(
+                "INFO",
+                "Job " + job.id + " completed with " + job.shots + " shots"
+            )
         } else if (messageKind == "IBMQ_ERROR" && parts.length >= 3) {
             job.error = parts[2]
             job.status = "failed"
             job.statusResponseCounter += 1
             job.resultResponseCounter += 1
+            sendIBMDebug("ERROR", "Job " + job.id + ": " + job.error)
         }
     }
 
@@ -601,6 +612,10 @@ namespace microQiskitRuntime {
     function sendIBMLine(line: string): void {
         serial.writeLine(line)
         basic.pause(5)
+    }
+
+    function sendIBMDebug(level: string, message: string): void {
+        sendIBMLine("MICROQISKIT_" + level + "|" + message)
     }
 
     function waitForIBMStatusReply(
@@ -624,10 +639,12 @@ namespace microQiskitRuntime {
 
         if (job.status == "failed") {
             setError(job.error == "" ? "IBM job failed" : job.error)
+            sendIBMDebug("ERROR", lastError)
             return false
         }
 
         setError("The PC bridge did not return a status for job " + job.id)
+        sendIBMDebug("ERROR", lastError)
         return false
     }
 
@@ -663,10 +680,12 @@ namespace microQiskitRuntime {
 
         if (job.status == "failed") {
             setError(job.error == "" ? "IBM job failed" : job.error)
+            sendIBMDebug("ERROR", lastError)
             return false
         }
 
         setError("Timed out waiting for IBM result " + job.id)
+        sendIBMDebug("ERROR", lastError)
         return false
     }
 
@@ -1058,28 +1077,29 @@ namespace microQiskitRuntime {
     export function runOnIBMQuantum(circuitId: string, shots: number = 1024): string {
         clearError()
         initializeIBMSerial()
+        sendIBMDebug("INFO", "Preparing IBM Quantum submission")
         const circuit = getCircuit(circuitId)
 
         if (!circuit) {
-            sendIBMLine("MicroQiskit error: " + lastError)
+            sendIBMDebug("ERROR", lastError)
             return ""
         }
 
         if (shots < 1 || shots > MAX_SHOTS || shots != Math.floor(shots)) {
             setError("Shots must be between 1 and " + MAX_SHOTS)
-            sendIBMLine("MicroQiskit error: " + lastError)
+            sendIBMDebug("ERROR", lastError)
             return ""
         }
 
         if (!measurementMap(circuit)) {
-            sendIBMLine("MicroQiskit error: " + lastError)
+            sendIBMDebug("ERROR", lastError)
             return ""
         }
 
         for (let i = 0; i < circuit.data.length; i++) {
             if (circuit.data[i].kind == "initialize") {
                 setError("Custom initial states are not supported on IBM hardware")
-                sendIBMLine("MicroQiskit error: " + lastError)
+                sendIBMDebug("ERROR", lastError)
                 return ""
             }
         }
@@ -1094,6 +1114,11 @@ namespace microQiskitRuntime {
         // Finish any user-written serial line before beginning the protocol.
         serial.writeLine("")
         basic.pause(20)
+        sendIBMDebug(
+            "INFO",
+            "Sending " + jobId + " with " + circuit.data.length +
+            " operations and " + shots + " shots"
+        )
         sendIBMLine(
             "IBMQ_BEGIN|" + jobId + "|" + circuit.numQubits + "|" +
             circuit.numClbits + "|" + shots
@@ -1108,6 +1133,7 @@ namespace microQiskitRuntime {
         }
 
         sendIBMLine("IBMQ_END|" + jobId)
+        sendIBMDebug("INFO", "Job " + jobId + " sent to PC bridge")
         return jobId
     }
 

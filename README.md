@@ -60,6 +60,9 @@ Calliope. Der Block **run circuit on IBM Quantum** sendet denselben Schaltkreis
 PC-Programm muss dafür geöffnet und mit IBM sowie dem Calliope verbunden sein.
 Die Erweiterung verwendet die standardmäßige USB-Seriell-Verbindung und lässt
 bereits gestartete serielle Ausgaben des Benutzerprogramms unverändert.
+Im seriellen Protokoll erscheinen zusätzlich kurze `MICROQISKIT_INFO`- und
+`MICROQISKIT_ERROR`-Meldungen. Sie zeigen Übertragung, IBM-Annahme,
+Statusänderungen, Abschluss, Validierungsfehler und Timeouts an.
 
 Beide Run-Blöcke geben dieselbe Art von Job-ID zurück. Deshalb funktionieren
 die gleichen Ergebnisblöcke für lokale und echte Jobs. Ein lokaler Job ist
