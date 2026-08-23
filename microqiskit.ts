@@ -3,6 +3,8 @@ namespace microQiskitRuntime {
     const PI = 3.141592653589793
     const MAX_QUBITS = 8
     const MAX_SHOTS = 2048
+    const IBM_REPLY_TIMEOUT_TENTHS = 50
+    const IBM_RESULT_TIMEOUT_TENTHS = 6000
 
     class Gate {
         kind: string
@@ -64,6 +66,8 @@ namespace microQiskitRuntime {
         remoteJobId: string
         backend: string
         error: string
+        statusResponseCounter: number
+        resultResponseCounter: number
         memory: string[]
         countLabels: string[]
         counts: number[]
@@ -81,6 +85,8 @@ namespace microQiskitRuntime {
             this.remoteJobId = ""
             this.backend = ""
             this.error = ""
+            this.statusResponseCounter = 0
+            this.resultResponseCounter = 0
             this.memory = []
             this.countLabels = []
             this.counts = []
@@ -559,6 +565,7 @@ namespace microQiskitRuntime {
             job.status = "queued"
         } else if (messageKind == "IBMQ_STATUS" && parts.length >= 3) {
             job.status = parts[2].toLowerCase()
+            job.statusResponseCounter += 1
         } else if (messageKind == "IBMQ_SHOT" && parts.length >= 3) {
             job.memory = [parts[2]]
         } else if (messageKind == "IBMQ_COUNT" && parts.length >= 4) {
@@ -568,9 +575,12 @@ namespace microQiskitRuntime {
                 job.shots = parseInt(parts[2])
             }
             job.status = "done"
+            job.resultResponseCounter += 1
         } else if (messageKind == "IBMQ_ERROR" && parts.length >= 3) {
             job.error = parts[2]
             job.status = "failed"
+            job.statusResponseCounter += 1
+            job.resultResponseCounter += 1
         }
     }
 
@@ -591,6 +601,83 @@ namespace microQiskitRuntime {
     function sendIBMLine(line: string): void {
         serial.writeLine(line)
         basic.pause(5)
+    }
+
+    function waitForIBMStatusReply(
+        job: Job,
+        previousStatusResponseCounter: number
+    ): boolean {
+        let remainingTenths = IBM_REPLY_TIMEOUT_TENTHS
+
+        while (
+            job.statusResponseCounter == previousStatusResponseCounter &&
+            job.status != "failed" &&
+            remainingTenths > 0
+        ) {
+            basic.pause(100)
+            remainingTenths -= 1
+        }
+
+        if (job.statusResponseCounter != previousStatusResponseCounter) {
+            return true
+        }
+
+        if (job.status == "failed") {
+            setError(job.error == "" ? "IBM job failed" : job.error)
+            return false
+        }
+
+        setError("The PC bridge did not return a status for job " + job.id)
+        return false
+    }
+
+    function waitForIBMResult(job: Job, timeoutTenths: number): boolean {
+        if (job.source != "ibm" || job.status == "done") {
+            return true
+        }
+
+        if (job.status == "failed") {
+            setError(job.error == "" ? "IBM job failed" : job.error)
+            return false
+        }
+
+        const previousResultResponseCounter = job.resultResponseCounter
+        sendIBMLine("IBMQ_GET_RESULT|" + job.id)
+        let remainingTenths = timeoutTenths
+
+        while (
+            job.resultResponseCounter == previousResultResponseCounter &&
+            job.status != "failed" &&
+            remainingTenths > 0
+        ) {
+            basic.pause(100)
+            remainingTenths -= 1
+        }
+
+        if (
+            job.resultResponseCounter != previousResultResponseCounter &&
+            job.status == "done"
+        ) {
+            return true
+        }
+
+        if (job.status == "failed") {
+            setError(job.error == "" ? "IBM job failed" : job.error)
+            return false
+        }
+
+        setError("Timed out waiting for IBM result " + job.id)
+        return false
+    }
+
+    function countForOutcome(job: Job, outcome: string): number {
+        for (let i = 0; i < job.countLabels.length; i++) {
+            if (job.countLabels[i] == outcome) {
+                return job.counts[i]
+            }
+        }
+
+        return 0
     }
 
     function jobSourceLabel(job: Job): string {
@@ -638,10 +725,16 @@ namespace microQiskitRuntime {
         }
 
         if (view == 3) {
+            const currentStatus = getJobStatus(jobId)
             sendIBMLine(
-                "Qiskit job " + job.id + ": " + job.status +
+                "Qiskit job " + job.id + ": " + currentStatus +
                 " (" + jobSourceLabel(job) + ")"
             )
+            return
+        }
+
+        if (!waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)) {
+            sendIBMLine("MicroQiskit error: " + lastError)
             return
         }
 
@@ -1126,54 +1219,59 @@ namespace microQiskitRuntime {
     export function getJobMemory(jobId: string): string[] {
         clearError()
         const job = getJob(jobId)
-        return job ? copyStringArray(job.memory) : []
+        return job && waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)
+            ? copyStringArray(job.memory) : []
     }
 
     export function getJobCountLabels(jobId: string): string[] {
         clearError()
         const job = getJob(jobId)
-        return job ? copyStringArray(job.countLabels) : []
+        return job && waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)
+            ? copyStringArray(job.countLabels) : []
     }
 
     export function getJobCounts(jobId: string): number[] {
         clearError()
         const job = getJob(jobId)
-        return job ? copyNumberArray(job.counts) : []
+        return job && waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)
+            ? copyNumberArray(job.counts) : []
     }
 
     export function getCount(jobId: string, outcome: string): number {
         clearError()
         const job = getJob(jobId)
 
-        if (!job) {
+        if (!job || !waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)) {
             return 0
         }
 
-        for (let i = 0; i < job.countLabels.length; i++) {
-            if (job.countLabels[i] == outcome) {
-                return job.counts[i]
-            }
-        }
-
-        return 0
+        return countForOutcome(job, outcome)
     }
 
     export function getPercentage(jobId: string, outcome: string): number {
         clearError()
         const job = getJob(jobId)
 
-        if (!job || job.shots == 0) {
+        if (
+            !job ||
+            !waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS) ||
+            job.shots == 0
+        ) {
             return 0
         }
 
-        return 100 * getCount(jobId, outcome) / job.shots
+        return 100 * countForOutcome(job, outcome) / job.shots
     }
 
     export function getMostFrequentResult(jobId: string): string {
         clearError()
         const job = getJob(jobId)
 
-        if (!job || job.counts.length == 0) {
+        if (
+            !job ||
+            !waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS) ||
+            job.counts.length == 0
+        ) {
             return ""
         }
 
@@ -1197,7 +1295,21 @@ namespace microQiskitRuntime {
     export function getJobStatus(jobId: string): string {
         clearError()
         const job = getJob(jobId)
-        return job ? job.status : ""
+
+        if (!job) {
+            return ""
+        }
+
+        if (job.source == "ibm") {
+            const previousStatusResponseCounter = job.statusResponseCounter
+            sendIBMLine("IBMQ_GET_STATUS|" + job.id)
+
+            if (!waitForIBMStatusReply(job, previousStatusResponseCounter)) {
+                return "timeout"
+            }
+        }
+
+        return job.status
     }
 
     export function isJobFinished(jobId: string): boolean {
@@ -1240,7 +1352,11 @@ namespace microQiskitRuntime {
         clearError()
         const job = getJob(jobId)
 
-        if (!job || job.memory.length == 0) {
+        if (
+            !job ||
+            !waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS) ||
+            job.memory.length == 0
+        ) {
             return []
         }
 

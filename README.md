@@ -71,6 +71,25 @@ lesbar ausgeben. Das Dropdown bietet außerdem **One shot**, **Counts** und
 PC-Programms; lokale Ergebnisse können auch mit einem normalen seriellen
 Monitor gelesen werden.
 
+Das Starten eines IBM-Jobs bleibt asynchron und gibt die Job-ID sofort zurück.
+**status of job** fragt den aktuellen Zustand beim PC ab und wartet nur auf die
+passende Statusantwort. Ergebnisblöcke senden eine Ergebnisanfrage und warten
+nur auf das vollständige Ergebnismuster oder eine Fehlermeldung. Lokale Jobs
+antworten immer sofort. Als Schutz bei einer getrennten Verbindung gilt für
+Statusantworten ein Timeout von fünf Sekunden und für IBM-Ergebnisse ein Timeout
+von zehn Minuten. Die Meldung steht dann in **last MicroQiskit error**; der
+IBM-Job wird nicht abgebrochen und sein Ergebnis kann später noch eintreffen.
+
+**job is finished** bleibt absichtlich nicht blockierend und eignet sich für
+Abfrageschleifen. Ein zusätzlicher **wait for job**-Block ist nicht nötig.
+
+Für jeden IBM-Job läuft im PC-Programm ein eigener Hintergrund-Thread. Er
+aktualisiert den Status regelmäßig und lädt das Sampler-Ergebnis nach Abschluss
+genau einmal von IBM. Anschließend liegen Status, alle einzelnen Shots, Counts,
+Backend und IBM-Job-ID im lokalen Speicher des PC-Programms. Weitere Anfragen
+des Calliope werden aus diesem Cache beantwortet und erzeugen keine zusätzliche
+IBM-Abfrage oder erneute Ausführung.
+
 #### Metadaten (verwendet für Suche, Rendering)
 
 * for PXT/calliopemini

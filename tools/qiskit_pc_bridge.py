@@ -76,6 +76,8 @@ class QiskitBridgeApp(tk.Tk):
         self.serial_port_info: dict[str, Any] = {}
         self.incoming_circuits: dict[str, dict[str, Any]] = {}
         self.active_ibm_jobs: set[str] = set()
+        self.ibm_job_statuses: dict[str, str] = {}
+        self.ibm_job_results: dict[str, dict[str, Any]] = {}
         self.ibm_jobs_lock = threading.Lock()
         self.dashboard_visible = False
         self.closing = False
@@ -621,7 +623,30 @@ class QiskitBridgeApp(tk.Tk):
 
     def protocol_error(self, request_id: str, message: str) -> None:
         safe_message = self.safe_protocol_text(message)
+        with self.ibm_jobs_lock:
+            self.ibm_job_statuses[request_id] = "FAILED"
         self.send_calliope(f"IBMQ_ERROR|{request_id}|{safe_message}")
+
+    def send_ibm_status(self, request_id: str, status: str) -> None:
+        with self.ibm_jobs_lock:
+            self.ibm_job_statuses[request_id] = status
+        self.send_calliope(f"IBMQ_STATUS|{request_id}|{status}")
+
+    def replay_ibm_result(self, request_id: str) -> None:
+        with self.ibm_jobs_lock:
+            result = self.ibm_job_results.get(request_id)
+
+        if result is None:
+            return
+
+        first_shot = result["first_shot"]
+        if first_shot:
+            self.send_calliope(f"IBMQ_SHOT|{request_id}|{first_shot}")
+        for label in sorted(result["counts"]):
+            self.send_calliope(
+                f"IBMQ_COUNT|{request_id}|{label}|{result['counts'][label]}"
+            )
+        self.send_calliope(f"IBMQ_DONE|{request_id}|{result['shots']}")
 
     @staticmethod
     def safe_protocol_text(message: str) -> str:
@@ -634,6 +659,34 @@ class QiskitBridgeApp(tk.Tk):
         request_id = parts[1] if len(parts) >= 2 else "unknown"
 
         try:
+            if message_kind == "IBMQ_GET_STATUS":
+                if len(parts) != 2:
+                    raise ValueError("Invalid IBM status request")
+                with self.ibm_jobs_lock:
+                    status = self.ibm_job_statuses.get(request_id)
+                if status is None:
+                    raise ValueError("IBM job is unknown to the PC bridge")
+                self.send_calliope(f"IBMQ_STATUS|{request_id}|{status}")
+                return
+
+            if message_kind == "IBMQ_GET_RESULT":
+                if len(parts) != 2:
+                    raise ValueError("Invalid IBM result request")
+                with self.ibm_jobs_lock:
+                    result_exists = request_id in self.ibm_job_results
+                    status = self.ibm_job_statuses.get(request_id)
+                if result_exists:
+                    threading.Thread(
+                        target=self.replay_ibm_result,
+                        args=(request_id,),
+                        daemon=True,
+                    ).start()
+                elif status is not None:
+                    self.send_calliope(f"IBMQ_STATUS|{request_id}|{status}")
+                else:
+                    raise ValueError("IBM job is unknown to the PC bridge")
+                return
+
             if message_kind == "IBMQ_BEGIN":
                 if len(parts) != 5:
                     raise ValueError("Invalid circuit header")
@@ -655,6 +708,8 @@ class QiskitBridgeApp(tk.Tk):
                 with self.ibm_jobs_lock:
                     if request_id in self.active_ibm_jobs:
                         raise ValueError("This IBM job is already active")
+                    self.ibm_job_results.pop(request_id, None)
+                    self.ibm_job_statuses[request_id] = "RECEIVING_CIRCUIT"
                 self.incoming_circuits[request_id] = {
                     "request_id": request_id,
                     "num_qubits": num_qubits,
@@ -688,6 +743,7 @@ class QiskitBridgeApp(tk.Tk):
                     raise ValueError("IBM Quantum is not connected")
                 with self.ibm_jobs_lock:
                     self.active_ibm_jobs.add(request_id)
+                    self.ibm_job_statuses[request_id] = "RECEIVED"
                 threading.Thread(
                     target=self.ibm_job_worker,
                     args=(request, self.ibm_service),
@@ -746,7 +802,7 @@ class QiskitBridgeApp(tk.Tk):
             if measurement_count == 0:
                 raise ValueError("The circuit needs at least one measurement")
 
-            self.send_calliope(f"IBMQ_STATUS|{request_id}|SELECTING_QPU")
+            self.send_ibm_status(request_id, "SELECTING_QPU")
             backend = service.least_busy(
                 operational=True,
                 simulator=False,
@@ -754,7 +810,7 @@ class QiskitBridgeApp(tk.Tk):
             )
             selected_backend_name = backend_name(backend)
 
-            self.send_calliope(f"IBMQ_STATUS|{request_id}|TRANSPILING")
+            self.send_ibm_status(request_id, "TRANSPILING")
             pass_manager = generate_preset_pass_manager(
                 backend=backend,
                 optimization_level=1,
@@ -774,7 +830,10 @@ class QiskitBridgeApp(tk.Tk):
                 status = getattr(status_value, "name", str(status_value))
                 status = status.split(".")[-1].upper()
                 if status != last_status:
-                    self.send_calliope(f"IBMQ_STATUS|{request_id}|{status}")
+                    displayed_status = (
+                        "RETRIEVING_RESULT" if status == "DONE" else status
+                    )
+                    self.send_ibm_status(request_id, displayed_status)
                     last_status = status
                 if status in {"DONE", "ERROR", "CANCELLED"}:
                     break
@@ -791,13 +850,26 @@ class QiskitBridgeApp(tk.Tk):
 
             bitstrings = bit_array.get_bitstrings()
             counts = bit_array.get_counts()
-            if bitstrings:
-                self.send_calliope(f"IBMQ_SHOT|{request_id}|{bitstrings[0]}")
-            for label in sorted(counts):
-                self.send_calliope(
-                    f"IBMQ_COUNT|{request_id}|{label}|{counts[label]}"
+            with self.ibm_jobs_lock:
+                self.ibm_job_results[request_id] = {
+                    "first_shot": bitstrings[0] if bitstrings else "",
+                    "bitstrings": list(bitstrings),
+                    "counts": dict(counts),
+                    "shots": len(bitstrings),
+                    "backend": selected_backend_name,
+                    "ibm_job_id": remote_job_id,
+                }
+                self.ibm_job_statuses[request_id] = "RESULT_READY"
+            self.events.put(
+                (
+                    "bridge_log",
+                    f"IBM job {remote_job_id}: cached {len(bitstrings)} shots "
+                    f"and {len(counts)} outcomes locally.",
                 )
-            self.send_calliope(f"IBMQ_DONE|{request_id}|{len(bitstrings)}")
+            )
+            self.replay_ibm_result(request_id)
+            with self.ibm_jobs_lock:
+                self.ibm_job_statuses[request_id] = "DONE"
         except Exception as exc:
             self.protocol_error(request_id, str(exc))
         finally:
