@@ -78,6 +78,7 @@ class QiskitBridgeApp(tk.Tk):
         self.active_ibm_jobs: set[str] = set()
         self.ibm_job_statuses: dict[str, str] = {}
         self.ibm_job_results: dict[str, dict[str, Any]] = {}
+        self.ibm_job_aliases: dict[str, str] = {}
         self.ibm_jobs_lock = threading.Lock()
         self.dashboard_visible = False
         self.closing = False
@@ -584,21 +585,40 @@ class QiskitBridgeApp(tk.Tk):
 
     def listen_to_calliope(self, connection: Any) -> None:
         """Read and log newline-delimited Calliope messages until disconnected."""
+        pending = bytearray()
+
         while not self.serial_stop.is_set():
-            raw_line = connection.readline()
-            if not raw_line:
+            waiting = connection.in_waiting
+            chunk = connection.read(waiting if waiting > 0 else 1)
+            if not chunk:
                 continue
 
-            message = raw_line.decode("utf-8", errors="replace").strip()
-            if not message:
-                continue
+            pending.extend(chunk)
 
-            self.events.put(("serial_received", message))
+            newline_index = pending.find(b"\n")
+            while newline_index >= 0:
+                raw_line = bytes(pending[:newline_index])
+                del pending[: newline_index + 1]
 
-            if message == "HELLO":
-                self.send_calliope("HELLO_ACK")
-            elif message.startswith("IBMQ_"):
-                self.handle_ibm_protocol_message(message)
+                message = raw_line.decode("utf-8", errors="replace").strip()
+                if message:
+                    self.events.put(("serial_received", message))
+
+                    if message == "HELLO":
+                        self.send_calliope("HELLO_ACK")
+                    elif message.startswith("IBMQ_"):
+                        self.handle_ibm_protocol_message(message)
+
+                newline_index = pending.find(b"\n")
+
+            if len(pending) > 4096:
+                self.events.put(
+                    (
+                        "bridge_log",
+                        "PC: Discarded an unterminated serial message larger than 4096 bytes.",
+                    )
+                )
+                pending.clear()
 
     def send_calliope(self, message: str) -> bool:
         """Send one protocol line without interleaving concurrent IBM jobs."""
@@ -634,7 +654,8 @@ class QiskitBridgeApp(tk.Tk):
 
     def replay_ibm_result(self, request_id: str) -> None:
         with self.ibm_jobs_lock:
-            result = self.ibm_job_results.get(request_id)
+            cache_key = self.ibm_job_aliases.get(request_id, request_id)
+            result = self.ibm_job_results.get(cache_key)
 
         if result is None:
             return
@@ -652,6 +673,27 @@ class QiskitBridgeApp(tk.Tk):
     def safe_protocol_text(message: str) -> str:
         return message.replace("|", "/").replace("\r", " ").replace("\n", " ")[:180]
 
+    def start_ibm_job_lookup(self, ibm_job_id: str) -> None:
+        """Retrieve an IBM job that was identified directly by its Runtime ID."""
+        if self.ibm_service is None:
+            raise ValueError("IBM Quantum is not connected")
+
+        with self.ibm_jobs_lock:
+            if ibm_job_id in self.active_ibm_jobs:
+                return
+            self.active_ibm_jobs.add(ibm_job_id)
+            self.ibm_job_statuses[ibm_job_id] = "LOOKING_UP_JOB"
+
+        self.events.put(
+            ("bridge_log", f"PC: Looking up IBM Runtime job {ibm_job_id}.")
+        )
+        self.send_calliope(f"IBMQ_STATUS|{ibm_job_id}|LOOKING_UP_JOB")
+        threading.Thread(
+            target=self.ibm_job_lookup_worker,
+            args=(ibm_job_id, self.ibm_service),
+            daemon=True,
+        ).start()
+
     def handle_ibm_protocol_message(self, message: str) -> None:
         """Collect a framed Calliope circuit and start its IBM job."""
         parts = message.split("|")
@@ -663,9 +705,11 @@ class QiskitBridgeApp(tk.Tk):
                 if len(parts) != 2:
                     raise ValueError("Invalid IBM status request")
                 with self.ibm_jobs_lock:
-                    status = self.ibm_job_statuses.get(request_id)
+                    cache_key = self.ibm_job_aliases.get(request_id, request_id)
+                    status = self.ibm_job_statuses.get(cache_key)
                 if status is None:
-                    raise ValueError("IBM job is unknown to the PC bridge")
+                    self.start_ibm_job_lookup(request_id)
+                    return
                 self.send_calliope(f"IBMQ_STATUS|{request_id}|{status}")
                 return
 
@@ -673,8 +717,9 @@ class QiskitBridgeApp(tk.Tk):
                 if len(parts) != 2:
                     raise ValueError("Invalid IBM result request")
                 with self.ibm_jobs_lock:
-                    result_exists = request_id in self.ibm_job_results
-                    status = self.ibm_job_statuses.get(request_id)
+                    cache_key = self.ibm_job_aliases.get(request_id, request_id)
+                    result_exists = cache_key in self.ibm_job_results
+                    status = self.ibm_job_statuses.get(cache_key)
                 if result_exists:
                     threading.Thread(
                         target=self.replay_ibm_result,
@@ -684,7 +729,7 @@ class QiskitBridgeApp(tk.Tk):
                 elif status is not None:
                     self.send_calliope(f"IBMQ_STATUS|{request_id}|{status}")
                 else:
-                    raise ValueError("IBM job is unknown to the PC bridge")
+                    self.start_ibm_job_lookup(request_id)
                 return
 
             if message_kind == "IBMQ_BEGIN":
@@ -819,62 +864,96 @@ class QiskitBridgeApp(tk.Tk):
 
             sampler = SamplerV2(mode=backend)
             runtime_job = sampler.run([isa_circuit], shots=request["shots"])
-            remote_job_id = runtime_job.job_id()
-            self.send_calliope(
-                f"IBMQ_ACCEPTED|{request_id}|{remote_job_id}|{selected_backend_name}"
+            self.monitor_ibm_runtime_job(
+                request_id,
+                runtime_job,
+                selected_backend_name,
             )
-
-            last_status = ""
-            while True:
-                status_value = runtime_job.status()
-                status = getattr(status_value, "name", str(status_value))
-                status = status.split(".")[-1].upper()
-                if status != last_status:
-                    displayed_status = (
-                        "RETRIEVING_RESULT" if status == "DONE" else status
-                    )
-                    self.send_ibm_status(request_id, displayed_status)
-                    last_status = status
-                if status in {"DONE", "ERROR", "CANCELLED"}:
-                    break
-                time.sleep(3)
-
-            result = runtime_job.result()
-            data = result[0].data
-            bit_array = getattr(data, "c", None)
-            if bit_array is None:
-                keys = list(data.keys())
-                if not keys:
-                    raise ValueError("IBM returned no classical measurement data")
-                bit_array = data[keys[0]]
-
-            bitstrings = bit_array.get_bitstrings()
-            counts = bit_array.get_counts()
-            with self.ibm_jobs_lock:
-                self.ibm_job_results[request_id] = {
-                    "first_shot": bitstrings[0] if bitstrings else "",
-                    "bitstrings": list(bitstrings),
-                    "counts": dict(counts),
-                    "shots": len(bitstrings),
-                    "backend": selected_backend_name,
-                    "ibm_job_id": remote_job_id,
-                }
-                self.ibm_job_statuses[request_id] = "RESULT_READY"
-            self.events.put(
-                (
-                    "bridge_log",
-                    f"IBM job {remote_job_id}: cached {len(bitstrings)} shots "
-                    f"and {len(counts)} outcomes locally.",
-                )
-            )
-            self.replay_ibm_result(request_id)
-            with self.ibm_jobs_lock:
-                self.ibm_job_statuses[request_id] = "DONE"
         except Exception as exc:
             self.protocol_error(request_id, str(exc))
         finally:
             with self.ibm_jobs_lock:
                 self.active_ibm_jobs.discard(request_id)
+
+    def ibm_job_lookup_worker(self, ibm_job_id: str, service: Any) -> None:
+        """Load and monitor a previously submitted Sampler job by IBM ID."""
+        try:
+            runtime_job = service.job(ibm_job_id)
+            backend = getattr(runtime_job, "backend", None)
+            backend = backend() if callable(backend) else backend
+            selected_backend_name = backend_name(backend) if backend else "unknown"
+            self.monitor_ibm_runtime_job(
+                ibm_job_id,
+                runtime_job,
+                selected_backend_name,
+            )
+        except Exception as exc:
+            self.protocol_error(ibm_job_id, str(exc))
+        finally:
+            with self.ibm_jobs_lock:
+                self.active_ibm_jobs.discard(ibm_job_id)
+
+    def monitor_ibm_runtime_job(
+        self,
+        request_id: str,
+        runtime_job: Any,
+        selected_backend_name: str,
+    ) -> None:
+        """Monitor one submitted or retrieved job and cache its Sampler result."""
+        remote_job_id = runtime_job.job_id()
+        with self.ibm_jobs_lock:
+            self.ibm_job_aliases[remote_job_id] = request_id
+
+        self.send_calliope(
+            f"IBMQ_ACCEPTED|{request_id}|{remote_job_id}|{selected_backend_name}"
+        )
+
+        last_status = ""
+        while True:
+            status_value = runtime_job.status()
+            status = getattr(status_value, "name", str(status_value))
+            status = status.split(".")[-1].upper()
+            if status != last_status:
+                displayed_status = (
+                    "RETRIEVING_RESULT" if status == "DONE" else status
+                )
+                self.send_ibm_status(request_id, displayed_status)
+                last_status = status
+            if status in {"DONE", "ERROR", "CANCELLED"}:
+                break
+            time.sleep(3)
+
+        result = runtime_job.result()
+        data = result[0].data
+        bit_array = getattr(data, "c", None)
+        if bit_array is None:
+            keys = list(data.keys())
+            if not keys:
+                raise ValueError("IBM returned no classical measurement data")
+            bit_array = data[keys[0]]
+
+        bitstrings = bit_array.get_bitstrings()
+        counts = bit_array.get_counts()
+        with self.ibm_jobs_lock:
+            self.ibm_job_results[request_id] = {
+                "first_shot": bitstrings[0] if bitstrings else "",
+                "bitstrings": list(bitstrings),
+                "counts": dict(counts),
+                "shots": len(bitstrings),
+                "backend": selected_backend_name,
+                "ibm_job_id": remote_job_id,
+            }
+            self.ibm_job_statuses[request_id] = "RESULT_READY"
+        self.events.put(
+            (
+                "bridge_log",
+                f"IBM job {remote_job_id}: cached {len(bitstrings)} shots "
+                f"and {len(counts)} outcomes locally.",
+            )
+        )
+        self.replay_ibm_result(request_id)
+        with self.ibm_jobs_lock:
+            self.ibm_job_statuses[request_id] = "DONE"
 
     def disconnect_calliope(self) -> None:
         self.serial_stop.set()

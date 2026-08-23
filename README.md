@@ -66,6 +66,11 @@ Statusänderungen, Abschluss, Validierungsfehler und Timeouts an.
 Für eigene Ausgaben sollte `serial write line` verwendet werden. Die Erweiterung
 setzt trotzdem vor jeder Protokollnachricht eine neue Zeile, damit ein vorheriges
 `serial write string` die Kommunikation mit dem PC nicht beschädigen kann.
+Die Ergebnisblöcke erwarten die lokale Calliope-Job-ID (`job1`, `job2`, ...), die
+vom Startblock zurückgegeben wird, oder direkt die IBM-Runtime-ID aus dem
+PC-Protokoll beziehungsweise der IBM-Workloads-Seite. Bei einer noch unbekannten
+IBM-ID lädt das PC-Programm den Job im Hintergrund über IBM, überwacht ihn und
+speichert sein Sampler-Ergebnis anschließend im gleichen lokalen Cache.
 
 Beide Run-Blöcke geben dieselbe Art von Job-ID zurück. Deshalb funktionieren
 die gleichen Ergebnisblöcke für lokale und echte Jobs. Ein lokaler Job ist

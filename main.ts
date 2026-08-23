@@ -423,6 +423,15 @@ namespace microQiskit {
         return microQiskitRuntime.getJobError(jobId)
     }
 
+    /** Returns IBM's Runtime ID for an IBM job, or an empty string. */
+    //% blockId=microqiskit_ibm_job_id
+    //% block="IBM Runtime ID of job $jobId"
+    //% subcategory="Qiskit advanced" group="Results" weight=58
+    //% jobId.shadow=variables_get jobId.defl=job
+    export function getIBMJobId(jobId: string): string {
+        return microQiskitRuntime.getIBMJobId(jobId)
+    }
+
     /** Prints a readable result for either a local or IBM job to USB serial. */
     //% blockId=microqiskit_print_job_serial
     //% block="print $view for job $jobId to serial"

@@ -158,7 +158,10 @@ namespace microQiskitRuntime {
 
     function findJobIndex(jobId: string): number {
         for (let i = 0; i < jobs.length; i++) {
-            if (jobs[i].id == jobId) {
+            if (
+                jobs[i].id == jobId ||
+                (jobs[i].remoteJobId != "" && jobs[i].remoteJobId == jobId)
+            ) {
                 return i
             }
         }
@@ -186,6 +189,28 @@ namespace microQiskitRuntime {
         }
 
         return jobs[index]
+    }
+
+    function getJobForIBMRequest(jobId: string): Job {
+        const index = findJobIndex(jobId)
+
+        if (index >= 0) {
+            return jobs[index]
+        }
+
+        if (jobId == "") {
+            setError("Job ID cannot be empty")
+            return null
+        }
+
+        // A pasted IBM Runtime ID has no local Calliope Job yet. Create a
+        // lightweight proxy so the PC bridge can retrieve it from IBM.
+        const job = new Job(jobId, "", 0)
+        job.source = "ibm"
+        job.status = "looking_up_job"
+        job.remoteJobId = jobId
+        jobs.push(job)
+        return job
     }
 
     function validQubit(circuit: Circuit, qubit: number): boolean {
@@ -603,7 +628,11 @@ namespace microQiskitRuntime {
         ibmSerialInitialized = true
         // USB is MakeCode's default serial route. Reconfiguring the route or
         // transmit buffer here can cut off data the user's program just wrote.
+        // Let an immediately preceding user message leave the default buffer
+        // before enlarging it for the IBM protocol.
+        basic.pause(50)
         serial.setRxBufferSize(512)
+        serial.setTxBufferSize(512)
         serial.onDataReceived("\n", function () {
             handleIBMSerialMessage(serial.readUntil("\n"))
         })
@@ -611,10 +640,9 @@ namespace microQiskitRuntime {
 
     function sendIBMLine(line: string): void {
         // A user's serial.writeString() may have left an unfinished line.
-        // Terminate it so bridge protocol messages always start at column 1.
-        serial.writeLine("")
-        serial.writeLine(line)
-        basic.pause(5)
+        // Send the separator and complete bridge line as one buffered write.
+        serial.writeString("\n" + line + "\n")
+        basic.pause(10)
     }
 
     function sendIBMDebug(level: string, message: string): void {
@@ -737,7 +765,7 @@ namespace microQiskitRuntime {
 
     export function printJobToSerial(jobId: string, view: number): void {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
 
         initializeIBMSerial()
 
@@ -1251,28 +1279,28 @@ namespace microQiskitRuntime {
 
     export function getJobMemory(jobId: string): string[] {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
         return job && waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)
             ? copyStringArray(job.memory) : []
     }
 
     export function getJobCountLabels(jobId: string): string[] {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
         return job && waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)
             ? copyStringArray(job.countLabels) : []
     }
 
     export function getJobCounts(jobId: string): number[] {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
         return job && waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)
             ? copyNumberArray(job.counts) : []
     }
 
     export function getCount(jobId: string, outcome: string): number {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
 
         if (!job || !waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)) {
             return 0
@@ -1283,7 +1311,7 @@ namespace microQiskitRuntime {
 
     export function getPercentage(jobId: string, outcome: string): number {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
 
         if (
             !job ||
@@ -1298,7 +1326,7 @@ namespace microQiskitRuntime {
 
     export function getMostFrequentResult(jobId: string): string {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
 
         if (
             !job ||
@@ -1321,13 +1349,14 @@ namespace microQiskitRuntime {
 
     export function getJobShots(jobId: string): number {
         clearError()
-        const job = getJob(jobId)
-        return job ? job.shots : 0
+        const job = getJobForIBMRequest(jobId)
+        return job && waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS)
+            ? job.shots : 0
     }
 
     export function getJobStatus(jobId: string): string {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
 
         if (!job) {
             initializeIBMSerial()
@@ -1350,7 +1379,7 @@ namespace microQiskitRuntime {
 
     export function isJobFinished(jobId: string): boolean {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
 
         if (!job) {
             initializeIBMSerial()
@@ -1358,13 +1387,30 @@ namespace microQiskitRuntime {
             return false
         }
 
+        if (
+            job.source == "ibm" &&
+            job.status == "looking_up_job" &&
+            job.statusResponseCounter == 0
+        ) {
+            initializeIBMSerial()
+            job.status = "requesting_status"
+            sendIBMDebug("INFO", "Looking up IBM job " + job.remoteJobId)
+            sendIBMLine("IBMQ_GET_STATUS|" + job.id)
+        }
+
         return job.status == "done" || job.status == "failed"
     }
 
     export function getJobError(jobId: string): string {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
         return job ? job.error : ""
+    }
+
+    export function getIBMJobId(jobId: string): string {
+        clearError()
+        const job = getJobForIBMRequest(jobId)
+        return job && job.source == "ibm" ? job.remoteJobId : ""
     }
 
     export function getJobProbabilityLabels(jobId: string): string[] {
@@ -1393,7 +1439,7 @@ namespace microQiskitRuntime {
 
     export function getJobResult(jobId: string): number[] {
         clearError()
-        const job = getJob(jobId)
+        const job = getJobForIBMRequest(jobId)
 
         if (
             !job ||
