@@ -58,6 +58,8 @@ Der Block **run circuit locally** simuliert den Schaltkreis sofort auf dem
 Calliope. Der Block **run circuit on IBM Quantum** sendet denselben Schaltkreis
 über USB an das PC-Programm und startet dort einen echten `SamplerV2`-Job. Das
 PC-Programm muss dafür geöffnet und mit IBM sowie dem Calliope verbunden sein.
+Die Erweiterung verwendet die standardmäßige USB-Seriell-Verbindung und lässt
+bereits gestartete serielle Ausgaben des Benutzerprogramms unverändert.
 
 Beide Run-Blöcke geben dieselbe Art von Job-ID zurück. Deshalb funktionieren
 die gleichen Ergebnisblöcke für lokale und echte Jobs. Ein lokaler Job ist

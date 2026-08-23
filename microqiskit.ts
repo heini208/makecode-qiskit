@@ -590,9 +590,9 @@ namespace microQiskitRuntime {
         }
 
         ibmSerialInitialized = true
-        serial.redirectToUSB()
+        // USB is MakeCode's default serial route. Reconfiguring the route or
+        // transmit buffer here can cut off data the user's program just wrote.
         serial.setRxBufferSize(512)
-        serial.setTxBufferSize(512)
         serial.onDataReceived("\n", function () {
             handleIBMSerialMessage(serial.readUntil("\n"))
         })
@@ -1057,24 +1057,29 @@ namespace microQiskitRuntime {
 
     export function runOnIBMQuantum(circuitId: string, shots: number = 1024): string {
         clearError()
+        initializeIBMSerial()
         const circuit = getCircuit(circuitId)
 
         if (!circuit) {
+            sendIBMLine("MicroQiskit error: " + lastError)
             return ""
         }
 
         if (shots < 1 || shots > MAX_SHOTS || shots != Math.floor(shots)) {
             setError("Shots must be between 1 and " + MAX_SHOTS)
+            sendIBMLine("MicroQiskit error: " + lastError)
             return ""
         }
 
         if (!measurementMap(circuit)) {
+            sendIBMLine("MicroQiskit error: " + lastError)
             return ""
         }
 
         for (let i = 0; i < circuit.data.length; i++) {
             if (circuit.data[i].kind == "initialize") {
                 setError("Custom initial states are not supported on IBM hardware")
+                sendIBMLine("MicroQiskit error: " + lastError)
                 return ""
             }
         }
@@ -1086,7 +1091,9 @@ namespace microQiskitRuntime {
         job.status = "submitting"
         jobs.push(job)
 
-        initializeIBMSerial()
+        // Finish any user-written serial line before beginning the protocol.
+        serial.writeLine("")
+        basic.pause(20)
         sendIBMLine(
             "IBMQ_BEGIN|" + jobId + "|" + circuit.numQubits + "|" +
             circuit.numClbits + "|" + shots
