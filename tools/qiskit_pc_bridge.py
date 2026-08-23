@@ -15,6 +15,7 @@ from typing import Any
 
 IBM_CHANNEL = "ibm_quantum_platform"
 SERIAL_BAUD_RATE = 115200
+CALLIOPE_V3_USB_IDS = {(0x1366, 0x1025)}
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,25 @@ def backend_name(backend: Any) -> str:
     return str(name() if callable(name) else name)
 
 
+def is_calliope_port(port: Any) -> bool:
+    """Identify a Calliope from USB metadata, independently of user code."""
+    usb_id = (getattr(port, "vid", None), getattr(port, "pid", None))
+    if usb_id in CALLIOPE_V3_USB_IDS:
+        return True
+
+    metadata = " ".join(
+        str(value or "")
+        for value in (
+            getattr(port, "description", ""),
+            getattr(port, "product", ""),
+            getattr(port, "manufacturer", ""),
+            getattr(port, "interface", ""),
+            getattr(port, "hwid", ""),
+        )
+    ).lower()
+    return "calliope" in metadata
+
+
 class QiskitBridgeApp(tk.Tk):
     """Small desktop interface for IBM and Calliope connections."""
 
@@ -52,6 +72,7 @@ class QiskitBridgeApp(tk.Tk):
         self.serial_stop = threading.Event()
         self.serial_thread: threading.Thread | None = None
         self.port_devices: dict[str, str] = {}
+        self.serial_port_info: dict[str, Any] = {}
         self.dashboard_visible = False
         self.closing = False
 
@@ -354,19 +375,29 @@ class QiskitBridgeApp(tk.Tk):
         serial_frame.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         serial_frame.columnconfigure(0, weight=1)
 
+        self.auto_detect_button = ttk.Button(
+            serial_frame,
+            text="Find and connect Calliope automatically",
+            command=self.start_auto_discovery,
+        )
+        self.auto_detect_button.grid(
+            row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10)
+        )
+
         self.port_box = ttk.Combobox(serial_frame, state="readonly")
-        self.port_box.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        ttk.Button(
+        self.port_box.grid(row=1, column=0, sticky="ew", padx=(0, 8))
+        self.refresh_ports_button = ttk.Button(
             serial_frame,
             text="Refresh ports",
             command=self.refresh_serial_ports,
-        ).grid(row=0, column=1, padx=(0, 8))
+        )
+        self.refresh_ports_button.grid(row=1, column=1, padx=(0, 8))
         self.calliope_connect_button = ttk.Button(
             serial_frame,
-            text="Connect Calliope",
+            text="Connect selected port",
             command=self.toggle_calliope_connection,
         )
-        self.calliope_connect_button.grid(row=0, column=2)
+        self.calliope_connect_button.grid(row=1, column=2)
 
         log_header = ttk.Frame(outer)
         log_header.grid(row=3, column=0, sticky="ew", pady=(5, 5))
@@ -406,6 +437,7 @@ class QiskitBridgeApp(tk.Tk):
             self.log_message("Accessible quantum systems: none found")
 
         self.log_message(connection_info["save_message"])
+        self.after(250, self.start_auto_discovery)
 
     def refresh_serial_ports(self) -> None:
         if not self.dashboard_visible:
@@ -418,12 +450,14 @@ class QiskitBridgeApp(tk.Tk):
             self.port_box.configure(values=("PySerial is not installed",))
             self.port_box.current(0)
             self.calliope_connect_button.configure(state="disabled")
+            self.auto_detect_button.configure(state="disabled")
             self.log_message(
                 "PC: PySerial is missing. Run: python -m pip install -r requirements.txt"
             )
             return
 
         ports = list(list_ports.comports())
+        self.serial_port_info = {port.device: port for port in ports}
         self.port_devices = {
             f"{port.device} — {port.description}": port.device for port in ports
         }
@@ -433,10 +467,51 @@ class QiskitBridgeApp(tk.Tk):
         if labels:
             self.port_box.current(0)
             self.calliope_connect_button.configure(state="normal")
+            self.auto_detect_button.configure(state="normal")
         else:
             self.port_box.set("")
             self.calliope_connect_button.configure(state="disabled")
+            self.auto_detect_button.configure(state="disabled")
             self.log_message("PC: No serial device was found.")
+
+    def start_auto_discovery(self) -> None:
+        if not self.dashboard_visible or self.serial_connection is not None:
+            return
+
+        if not self.serial_port_info:
+            self.log_message("PC: No serial ports are available for discovery.")
+            return
+
+        candidates = [
+            port for port in self.serial_port_info.values() if is_calliope_port(port)
+        ]
+        if not candidates:
+            self.calliope_status_label.configure(
+                text="● Calliope: Not found",
+                style="Disconnected.TLabel",
+            )
+            self.log_message(
+                "PC: No Calliope USB device was identified. "
+                "You can refresh or select a port manually."
+            )
+            return
+
+        selected_port = candidates[0]
+        if len(candidates) > 1:
+            self.log_message(
+                f"PC: Found {len(candidates)} Calliope devices; connecting to "
+                f"{selected_port.device}."
+            )
+        else:
+            self.log_message(
+                f"PC: Identified Calliope hardware on {selected_port.device}."
+            )
+
+        for label, device in self.port_devices.items():
+            if device == selected_port.device:
+                self.port_box.set(label)
+                break
+        self.connect_calliope()
 
     def toggle_calliope_connection(self) -> None:
         if self.serial_connection is not None:
@@ -457,6 +532,8 @@ class QiskitBridgeApp(tk.Tk):
 
         self.serial_stop.clear()
         self.calliope_connect_button.configure(state="disabled")
+        self.auto_detect_button.configure(state="disabled")
+        self.refresh_ports_button.configure(state="disabled")
         self.calliope_status_label.configure(
             text="● Calliope: Connecting...",
             style="Checking.TLabel",
@@ -484,24 +561,8 @@ class QiskitBridgeApp(tk.Tk):
             time.sleep(2)
             if self.serial_stop.is_set():
                 return
-            connection.reset_input_buffer()
             self.events.put(("calliope_connected", port))
-
-            while not self.serial_stop.is_set():
-                raw_line = connection.readline()
-                if not raw_line:
-                    continue
-
-                message = raw_line.decode("utf-8", errors="replace").strip()
-                if not message:
-                    continue
-
-                self.events.put(("serial_received", message))
-
-                if message == "HELLO":
-                    connection.write(b"HELLO_ACK\n")
-                    connection.flush()
-                    self.events.put(("serial_sent", "HELLO_ACK"))
+            self.listen_to_calliope(connection)
         except Exception as exc:
             if not self.serial_stop.is_set():
                 self.events.put(("calliope_error", str(exc)))
@@ -514,6 +575,24 @@ class QiskitBridgeApp(tk.Tk):
                 except Exception:
                     pass
             self.events.put(("calliope_disconnected", port))
+
+    def listen_to_calliope(self, connection: Any) -> None:
+        """Read and log newline-delimited Calliope messages until disconnected."""
+        while not self.serial_stop.is_set():
+            raw_line = connection.readline()
+            if not raw_line:
+                continue
+
+            message = raw_line.decode("utf-8", errors="replace").strip()
+            if not message:
+                continue
+
+            self.events.put(("serial_received", message))
+
+            if message == "HELLO":
+                connection.write(b"HELLO_ACK\n")
+                connection.flush()
+                self.events.put(("serial_sent", "HELLO_ACK"))
 
     def disconnect_calliope(self) -> None:
         self.serial_stop.set()
@@ -591,6 +670,12 @@ class QiskitBridgeApp(tk.Tk):
             return
 
         if event_name == "calliope_connected":
+            for label, device in self.port_devices.items():
+                if device == payload:
+                    self.port_box.configure(state="readonly")
+                    self.port_box.set(label)
+                    self.port_box.configure(state="disabled")
+                    break
             self.calliope_status_label.configure(
                 text=f"● Calliope: Connected ({payload})",
                 style="Connected.TLabel",
@@ -606,9 +691,14 @@ class QiskitBridgeApp(tk.Tk):
                 style="Disconnected.TLabel",
             )
             self.calliope_connect_button.configure(
-                text="Connect Calliope",
+                text="Connect selected port",
                 state="normal" if self.port_devices else "disabled",
             )
+            self.auto_detect_button.configure(
+                state="normal" if self.port_devices else "disabled"
+            )
+            self.refresh_ports_button.configure(state="normal")
+            self.port_box.configure(state="readonly")
             self.log_message("Calliope disconnected.")
         elif event_name == "calliope_error":
             self.log_message(f"Calliope connection error: {payload}")

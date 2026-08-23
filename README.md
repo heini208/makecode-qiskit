@@ -45,8 +45,12 @@ Option deshalb nur auf einem vertrauenswürdigen persönlichen Computer.
 
 Das Programm führt eine echte Kontoabfrage aus und öffnet danach das
 Verbindungs-Dashboard. Dort werden der IBM- und Calliope-Verbindungsstatus,
-verfügbare USB-Ports und alle über USB empfangenen Nachrichten angezeigt. Der
-bisherige `HELLO`/`HELLO_ACK`-Handshake wird ebenfalls unterstützt.
+verfügbare USB-Ports und alle über USB empfangenen Nachrichten angezeigt. Das
+Programm durchsucht die seriellen Ports automatisch und erkennt den Calliope
+anhand seiner USB-Geräteinformationen. Das funktioniert unabhängig vom
+MakeCode-Programm auf dem Calliope. Die manuelle Portauswahl bleibt als Fallback
+verfügbar; ein vorhandener `HELLO`/`HELLO_ACK`-Handshake wird weiterhin
+beantwortet, ist aber nicht erforderlich.
 
 #### Metadaten (verwendet für Suche, Rendering)
 
