@@ -661,23 +661,50 @@ class QiskitBridgeApp(tk.Tk):
     def listen_to_calliope(self, connection: Any) -> None:
         """Read and log newline-delimited Calliope messages until disconnected."""
         pending = bytearray()
+        previewed_length = 0
+        last_byte_time = time.monotonic()
 
         while not self.serial_stop.is_set():
             waiting = connection.in_waiting
             chunk = connection.read(waiting if waiting > 0 else 1)
             if not chunk:
+                if (
+                    len(pending) > previewed_length
+                    and time.monotonic() - last_byte_time >= 0.35
+                ):
+                    preview = bytes(pending[previewed_length:]).decode(
+                        "utf-8", errors="replace"
+                    )
+                    if preview:
+                        self.events.put(("serial_partial", preview))
+                    previewed_length = len(pending)
                 continue
 
             pending.extend(chunk)
+            last_byte_time = time.monotonic()
 
             newline_index = pending.find(b"\n")
             while newline_index >= 0:
                 raw_line = bytes(pending[:newline_index])
                 del pending[: newline_index + 1]
 
+                already_previewed = min(previewed_length, len(raw_line))
+                unpreviewed_tail = raw_line[already_previewed:]
+                previewed_length = max(
+                    0,
+                    previewed_length - (newline_index + 1),
+                )
+
                 message = raw_line.decode("utf-8", errors="replace").strip()
-                if message:
+                if message and already_previewed == 0:
                     self.handle_calliope_serial_message(message)
+                elif unpreviewed_tail.strip():
+                    self.events.put(
+                        (
+                            "serial_partial",
+                            unpreviewed_tail.decode("utf-8", errors="replace").strip(),
+                        )
+                    )
 
                 newline_index = pending.find(b"\n")
 
@@ -692,7 +719,7 @@ class QiskitBridgeApp(tk.Tk):
 
     def handle_calliope_serial_message(self, message: str) -> None:
         """Validate framed traffic and retain compatibility with older firmware."""
-        if message.startswith("MQF|"):
+        if message.startswith(("MQ2|", "MQF|")):
             self.handle_calliope_serial_frame(message)
             return
 
@@ -777,7 +804,10 @@ class QiskitBridgeApp(tk.Tk):
 
         try:
             with self.serial_write_lock:
-                connection.write((message + "\r\n").encode("utf-8"))
+                encoded_message = (message + "\r\n").encode("utf-8")
+                for byte in encoded_message:
+                    connection.write(bytes((byte,)))
+                    time.sleep(0.002)
                 connection.flush()
                 time.sleep(0.01)
         except Exception as exc:
@@ -1295,6 +1325,8 @@ class QiskitBridgeApp(tk.Tk):
             )
         elif event_name == "serial_received":
             self.log_message(f"Calliope -> PC: {payload}")
+        elif event_name == "serial_partial":
+            self.log_message(f"Calliope -> PC (no newline): {payload}")
         elif event_name == "serial_sent":
             self.last_sent_var.set(f"Last sent to Calliope: {payload}")
             self.log_message(f"PC -> Calliope: {payload}")

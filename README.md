@@ -69,11 +69,14 @@ Protokollnachricht verschmelzen. Die Erweiterung sendet ihre Protokollzeilen
 zeichenweise mit einer kurzen Pause, damit der Calliope-v3-Sendepuffer nicht mit
 einer langen Zeichenkette auf einmal gefüllt wird. Eingehende PC-Nachrichten
 werden mit MakeCodes Newline-Trennzeichen und `serial read line` gelesen.
+Das PC-Programm zeigt auch Text aus `serial write string` nach einer kurzen
+Leerlaufzeit als **no newline** an, verarbeitet ihn aber nicht als Protokollzeile.
 
 Kritische Calliope-Anfragen verwenden zusätzlich einen Rahmen mit Sitzungsnummer,
 laufender Nummer und Prüfsumme. Das PC-Programm bestätigt gültige Rahmen; bei
 einer beschädigten oder ausbleibenden Bestätigung sendet der Calliope die Anfrage
 automatisch erneut. Wiederholungen werden bestätigt, aber nur einmal verarbeitet.
+Die zeichenweise übertragene Protokollversion beginnt mit `MQ2`.
 Die Ergebnisblöcke erwarten die lokale Calliope-Job-ID (`job1`, `job2`, ...), die
 vom Startblock zurückgegeben wird, oder direkt die IBM-Runtime-ID aus dem
 PC-Protokoll beziehungsweise der IBM-Workloads-Seite. Bei einer noch unbekannten

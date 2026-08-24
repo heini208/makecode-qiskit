@@ -653,7 +653,7 @@ namespace microQiskitRuntime {
     function writePacedSerialText(text: string): void {
         for (let i = 0; i < text.length; i++) {
             serial.writeString(text.charAt(i))
-            basic.pause(5)
+            basic.pause(15)
         }
     }
 
@@ -697,7 +697,7 @@ namespace microQiskitRuntime {
         }
 
         const frame =
-            "MQF|" + ibmTransportSession + "|" + sequence + "|" +
+            "MQ2|" + ibmTransportSession + "|" + sequence + "|" +
             ibmFrameChecksum(payload) + "|" + payload
 
         for (let attempt = 0; attempt < IBM_FRAME_RETRIES; attempt++) {
