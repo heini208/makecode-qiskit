@@ -642,18 +642,33 @@ namespace microQiskitRuntime {
         // USB is MakeCode's default serial route. Reconfiguring the route or
         // transmit buffer here can cut off data the user's program just wrote.
         serial.setRxBufferSize(512)
-        serial.onDataReceived("\n", function () {
-            handleIBMSerialMessage(serial.readUntil("\n"))
-        })
+        serial.onDataReceived(
+            serial.delimiters(Delimiters.NewLine),
+            function () {
+                handleIBMSerialMessage(serial.readLine())
+            }
+        )
+    }
+
+    function writePacedSerialText(text: string): void {
+        for (let i = 0; i < text.length; i++) {
+            serial.writeString(text.charAt(i))
+            basic.pause(5)
+        }
+    }
+
+    function writePacedSerialLine(line: string): void {
+        // Sending a complete long string in one call loses bytes on the tested
+        // Calliope v3 USB path. Small paced writes keep the queue drained.
+        basic.pause(20)
+        writePacedSerialText("\r\n")
+        writePacedSerialText(line)
+        writePacedSerialText("\r\n")
+        basic.pause(20)
     }
 
     function sendIBMLine(line: string): void {
-        // Also let a user-written line finish before starting the protocol.
-        basic.pause(50)
-        serial.writeLine(line)
-        // The Calliope v3 USB serial implementation can lose queued bytes when
-        // several lines are written back-to-back. Let each line drain first.
-        basic.pause(50)
+        writePacedSerialLine(line)
     }
 
     function sendIBMDebug(level: string, message: string): void {

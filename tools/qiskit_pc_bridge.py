@@ -439,6 +439,10 @@ class QiskitBridgeApp(tk.Tk):
         self.jobs_table.column("status", width=145)
         self.jobs_table.column("cached", width=95, stretch=False, anchor="center")
         self.jobs_table.grid(row=0, column=0, sticky="nsew")
+        self.selected_job_id = ""
+        self.jobs_table.bind("<ButtonRelease-1>", self.select_job_id_cell)
+        self.jobs_table.bind("<Double-1>", self.copy_clicked_job_id)
+        self.jobs_table.bind("<Control-c>", self.copy_selected_job_id)
 
         jobs_scrollbar = ttk.Scrollbar(
             jobs_frame,
@@ -447,6 +451,22 @@ class QiskitBridgeApp(tk.Tk):
         )
         jobs_scrollbar.grid(row=0, column=1, sticky="ns")
         self.jobs_table.configure(yscrollcommand=jobs_scrollbar.set)
+
+        jobs_actions = ttk.Frame(jobs_frame)
+        jobs_actions.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(7, 0))
+        jobs_actions.columnconfigure(0, weight=1)
+        ttk.Label(
+            jobs_actions,
+            text="Click an ID, then copy it—or double-click the ID directly.",
+            foreground="#555555",
+        ).grid(row=0, column=0, sticky="w")
+        self.copy_job_id_button = ttk.Button(
+            jobs_actions,
+            text="Copy selected ID",
+            command=self.copy_selected_job_id,
+            state="disabled",
+        )
+        self.copy_job_id_button.grid(row=0, column=1, sticky="e")
 
         self.last_sent_var = tk.StringVar(value="Nothing sent yet")
         ttk.Label(
@@ -757,7 +777,7 @@ class QiskitBridgeApp(tk.Tk):
 
         try:
             with self.serial_write_lock:
-                connection.write((message + "\n").encode("utf-8"))
+                connection.write((message + "\r\n").encode("utf-8"))
                 connection.flush()
                 time.sleep(0.01)
         except Exception as exc:
@@ -1121,6 +1141,38 @@ class QiskitBridgeApp(tk.Tk):
         self.message_log.configure(state="normal")
         self.message_log.delete("1.0", "end")
         self.message_log.configure(state="disabled")
+
+    def select_job_id_cell(self, event: Any) -> None:
+        """Remember a clicked Calliope or IBM ID cell for copying."""
+        item_id = self.jobs_table.identify_row(event.y)
+        column_id = self.jobs_table.identify_column(event.x)
+        if not item_id or column_id not in {"#1", "#2"}:
+            self.selected_job_id = ""
+            self.copy_job_id_button.configure(state="disabled")
+            return
+
+        values = self.jobs_table.item(item_id, "values")
+        value_index = 0 if column_id == "#1" else 1
+        value = str(values[value_index]) if len(values) > value_index else ""
+        self.selected_job_id = "" if value == "—" else value
+        self.copy_job_id_button.configure(
+            state="normal" if self.selected_job_id else "disabled"
+        )
+
+    def copy_clicked_job_id(self, event: Any) -> None:
+        """Copy the ID beneath a double-click."""
+        self.select_job_id_cell(event)
+        self.copy_selected_job_id()
+
+    def copy_selected_job_id(self, _event: Any = None) -> None:
+        """Copy the most recently selected job ID to the system clipboard."""
+        if not self.selected_job_id:
+            return
+
+        self.clipboard_clear()
+        self.clipboard_append(self.selected_job_id)
+        self.update_idletasks()
+        self.log_message(f"PC: Copied job ID: {self.selected_job_id}")
 
     def refresh_jobs_table(self) -> None:
         """Refresh the dashboard from the thread-safe in-memory IBM job cache."""

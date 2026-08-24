@@ -66,8 +66,9 @@ Statusänderungen, Abschluss, Validierungsfehler und Timeouts an.
 Für eigene Ausgaben muss `serial write line` verwendet werden. Ein
 `serial write string` beendet die Zeile nicht und kann deshalb mit der nächsten
 Protokollnachricht verschmelzen. Die Erweiterung sendet ihre Protokollzeilen
-einzeln und mit einer kurzen Pause, damit der Calliope-v3-Sendepuffer vollständig
-geleert wird.
+zeichenweise mit einer kurzen Pause, damit der Calliope-v3-Sendepuffer nicht mit
+einer langen Zeichenkette auf einmal gefüllt wird. Eingehende PC-Nachrichten
+werden mit MakeCodes Newline-Trennzeichen und `serial read line` gelesen.
 
 Kritische Calliope-Anfragen verwenden zusätzlich einen Rahmen mit Sitzungsnummer,
 laufender Nummer und Prüfsumme. Das PC-Programm bestätigt gültige Rahmen; bei
@@ -114,6 +115,8 @@ Das Dashboard zeigt alle in der aktuellen Programmsitzung bekannten Jobs mit
 Calliope-ID, IBM-Runtime-ID, Quantensystem, Status und Cache-Zustand. Außerdem
 zeigt **Last sent to Calliope** die letzte Antwort des PC-Programms; im seriellen
 Protokoll bleiben weiterhin beide Kommunikationsrichtungen vollständig sichtbar.
+Eine Calliope- oder IBM-ID kann in der Job-Tabelle angeklickt und über
+**Copy selected ID** kopiert werden. Ein Doppelklick auf die ID kopiert sie direkt.
 
 #### Metadaten (verwendet für Suche, Rendering)
 
