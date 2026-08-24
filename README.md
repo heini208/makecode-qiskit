@@ -68,6 +68,11 @@ Für eigene Ausgaben muss `serial write line` verwendet werden. Ein
 Protokollnachricht verschmelzen. Die Erweiterung sendet ihre Protokollzeilen
 einzeln und mit einer kurzen Pause, damit der Calliope-v3-Sendepuffer vollständig
 geleert wird.
+
+Kritische Calliope-Anfragen verwenden zusätzlich einen Rahmen mit Sitzungsnummer,
+laufender Nummer und Prüfsumme. Das PC-Programm bestätigt gültige Rahmen; bei
+einer beschädigten oder ausbleibenden Bestätigung sendet der Calliope die Anfrage
+automatisch erneut. Wiederholungen werden bestätigt, aber nur einmal verarbeitet.
 Die Ergebnisblöcke erwarten die lokale Calliope-Job-ID (`job1`, `job2`, ...), die
 vom Startblock zurückgegeben wird, oder direkt die IBM-Runtime-ID aus dem
 PC-Protokoll beziehungsweise der IBM-Workloads-Seite. Bei einer noch unbekannten

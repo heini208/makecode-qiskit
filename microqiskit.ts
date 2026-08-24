@@ -5,6 +5,8 @@ namespace microQiskitRuntime {
     const MAX_SHOTS = 2048
     const IBM_REPLY_TIMEOUT_TENTHS = 50
     const IBM_RESULT_TIMEOUT_TENTHS = 6000
+    const IBM_FRAME_ACK_TIMEOUT_TENTHS = 10
+    const IBM_FRAME_RETRIES = 3
 
     class Gate {
         kind: string
@@ -103,6 +105,11 @@ namespace microQiskitRuntime {
     let nextJobId = 1
     let lastError = ""
     let ibmSerialInitialized = false
+    let ibmTransportSession = 0
+    let nextIBMFrameSequence = 1
+    let lastIBMFrameReplySession = -1
+    let lastIBMFrameReplySequence = -1
+    let lastIBMFrameReplyAccepted = false
 
     function setError(message: string): void {
         lastError = message
@@ -578,6 +585,22 @@ namespace microQiskitRuntime {
         }
 
         const messageKind = parts[0]
+
+        if (
+            (messageKind == "MQA" || messageKind == "MQN") &&
+            parts.length >= 3
+        ) {
+            const session = parseInt(parts[1])
+            const sequence = parseInt(parts[2])
+
+            if (session == ibmTransportSession) {
+                lastIBMFrameReplySession = session
+                lastIBMFrameReplySequence = sequence
+                lastIBMFrameReplyAccepted = messageKind == "MQA"
+            }
+            return
+        }
+
         const job = getJob(parts[1])
 
         if (!job || job.source != "ibm") {
@@ -615,6 +638,7 @@ namespace microQiskitRuntime {
         }
 
         ibmSerialInitialized = true
+        ibmTransportSession = Math.randomRange(100000, 999999)
         // USB is MakeCode's default serial route. Reconfiguring the route or
         // transmit buffer here can cut off data the user's program just wrote.
         serial.setRxBufferSize(512)
@@ -634,6 +658,63 @@ namespace microQiskitRuntime {
 
     function sendIBMDebug(level: string, message: string): void {
         sendIBMLine("MICROQISKIT_" + level + "|" + message)
+    }
+
+    function ibmFrameChecksum(payload: string): number {
+        let checksum = 0
+
+        for (let i = 0; i < payload.length; i++) {
+            checksum = (
+                checksum + payload.charCodeAt(i) * (i + 1)
+            ) % 65521
+        }
+
+        return checksum
+    }
+
+    function sendIBMProtocolLine(payload: string): boolean {
+        initializeIBMSerial()
+        const sequence = nextIBMFrameSequence
+        nextIBMFrameSequence += 1
+
+        if (nextIBMFrameSequence > 9999) {
+            nextIBMFrameSequence = 1
+        }
+
+        const frame =
+            "MQF|" + ibmTransportSession + "|" + sequence + "|" +
+            ibmFrameChecksum(payload) + "|" + payload
+
+        for (let attempt = 0; attempt < IBM_FRAME_RETRIES; attempt++) {
+            lastIBMFrameReplySession = -1
+            lastIBMFrameReplySequence = -1
+            lastIBMFrameReplyAccepted = false
+            sendIBMLine(frame)
+
+            let remainingTenths = IBM_FRAME_ACK_TIMEOUT_TENTHS
+            while (
+                (
+                    lastIBMFrameReplySession != ibmTransportSession ||
+                    lastIBMFrameReplySequence != sequence
+                ) &&
+                remainingTenths > 0
+            ) {
+                basic.pause(100)
+                remainingTenths -= 1
+            }
+
+            if (
+                lastIBMFrameReplySession == ibmTransportSession &&
+                lastIBMFrameReplySequence == sequence &&
+                lastIBMFrameReplyAccepted
+            ) {
+                return true
+            }
+        }
+
+        setError("PC bridge did not acknowledge serial frame " + sequence)
+        sendIBMDebug("ERROR", lastError)
+        return false
     }
 
     function waitForIBMStatusReply(
@@ -677,7 +758,9 @@ namespace microQiskitRuntime {
         }
 
         const previousResultResponseCounter = job.resultResponseCounter
-        sendIBMLine("IBMQ_GET_RESULT|" + job.id)
+        if (!sendIBMProtocolLine("IBMQ_GET_RESULT|" + job.id)) {
+            return false
+        }
         let remainingTenths = timeoutTenths
 
         while (
@@ -1128,20 +1211,31 @@ namespace microQiskitRuntime {
         job.status = "submitting"
         jobs.push(job)
 
-        sendIBMLine(
+        if (!sendIBMProtocolLine(
             "IBMQ_BEGIN|" + jobId + "|" + circuit.numQubits + "|" +
             circuit.numClbits + "|" + shots
-        )
+        )) {
+            job.status = "failed"
+            job.error = lastError
+            return jobId
+        }
 
         for (let i = 0; i < circuit.data.length; i++) {
             const gate = circuit.data[i]
-            sendIBMLine(
+            if (!sendIBMProtocolLine(
                 "IBMQ_GATE|" + jobId + "|" + gate.kind + "|" + gate.qubit +
                 "|" + gate.target + "|" + gate.theta
-            )
+            )) {
+                job.status = "failed"
+                job.error = lastError
+                return jobId
+            }
         }
 
-        sendIBMLine("IBMQ_END|" + jobId)
+        if (!sendIBMProtocolLine("IBMQ_END|" + jobId)) {
+            job.status = "failed"
+            job.error = lastError
+        }
         return jobId
     }
 
@@ -1346,7 +1440,9 @@ namespace microQiskitRuntime {
 
         if (job.source == "ibm") {
             const previousStatusResponseCounter = job.statusResponseCounter
-            sendIBMLine("IBMQ_GET_STATUS|" + job.id)
+            if (!sendIBMProtocolLine("IBMQ_GET_STATUS|" + job.id)) {
+                return "timeout"
+            }
 
             if (!waitForIBMStatusReply(job, previousStatusResponseCounter)) {
                 return "timeout"
@@ -1373,7 +1469,7 @@ namespace microQiskitRuntime {
         ) {
             initializeIBMSerial()
             job.status = "requesting_status"
-            sendIBMLine("IBMQ_GET_STATUS|" + job.id)
+            sendIBMProtocolLine("IBMQ_GET_STATUS|" + job.id)
         }
 
         return job.status == "done" || job.status == "failed"

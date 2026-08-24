@@ -57,6 +57,14 @@ def is_calliope_port(port: Any) -> bool:
     return "calliope" in metadata
 
 
+def serial_frame_checksum(payload: str) -> int:
+    """Match the small checksum used by the MakeCode transport."""
+    checksum = 0
+    for index, character in enumerate(payload):
+        checksum = (checksum + ord(character) * (index + 1)) % 65521
+    return checksum
+
+
 class QiskitBridgeApp(tk.Tk):
     """Small desktop interface for IBM and Calliope connections."""
 
@@ -81,6 +89,8 @@ class QiskitBridgeApp(tk.Tk):
         self.ibm_job_aliases: dict[str, str] = {}
         self.ibm_job_backends: dict[str, str] = {}
         self.ibm_jobs_lock = threading.Lock()
+        self.received_serial_frames: set[tuple[int, int]] = set()
+        self.framed_transport_active = False
         self.dashboard_visible = False
         self.closing = False
 
@@ -647,12 +657,7 @@ class QiskitBridgeApp(tk.Tk):
 
                 message = raw_line.decode("utf-8", errors="replace").strip()
                 if message:
-                    self.events.put(("serial_received", message))
-
-                    if message == "HELLO":
-                        self.send_calliope("HELLO_ACK")
-                    elif message.startswith("IBMQ_"):
-                        self.handle_ibm_protocol_message(message)
+                    self.handle_calliope_serial_message(message)
 
                 newline_index = pending.find(b"\n")
 
@@ -664,6 +669,82 @@ class QiskitBridgeApp(tk.Tk):
                     )
                 )
                 pending.clear()
+
+    def handle_calliope_serial_message(self, message: str) -> None:
+        """Validate framed traffic and retain compatibility with older firmware."""
+        if message.startswith("MQF|"):
+            self.handle_calliope_serial_frame(message)
+            return
+
+        self.events.put(("serial_received", message))
+        if message == "HELLO":
+            self.send_calliope("HELLO_ACK")
+        elif message.startswith("IBMQ_"):
+            if self.framed_transport_active:
+                self.events.put(
+                    (
+                        "bridge_log",
+                        "PC: Ignored an unframed IBM message after framed transport started.",
+                    )
+                )
+            else:
+                self.handle_ibm_protocol_message(message)
+
+    def handle_calliope_serial_frame(self, message: str) -> None:
+        """Check one Calliope frame, acknowledge it, and process it once."""
+        parts = message.split("|", 4)
+        if len(parts) != 5:
+            self.events.put(("bridge_log", "PC: Discarded a damaged serial frame."))
+            return
+
+        try:
+            session = int(parts[1])
+            sequence = int(parts[2])
+            received_checksum = int(parts[3])
+        except ValueError:
+            self.events.put(("bridge_log", "PC: Discarded a malformed serial frame."))
+            return
+
+        payload = parts[4]
+        expected_checksum = serial_frame_checksum(payload)
+        if received_checksum != expected_checksum:
+            self.send_calliope(f"MQN|{session}|{sequence}")
+            self.events.put(
+                (
+                    "bridge_log",
+                    f"PC: Frame {session}:{sequence} failed its checksum and was rejected.",
+                )
+            )
+            return
+
+        frame_key = (session, sequence)
+        self.send_calliope(f"MQA|{session}|{sequence}")
+        if frame_key in self.received_serial_frames:
+            self.events.put(
+                (
+                    "bridge_log",
+                    f"PC: Frame {session}:{sequence} was already processed; acknowledged retry.",
+                )
+            )
+            return
+
+        if len(self.received_serial_frames) >= 2048:
+            self.received_serial_frames.clear()
+        self.received_serial_frames.add(frame_key)
+        self.framed_transport_active = True
+        self.events.put(
+            (
+                "serial_received",
+                f"{payload}  [verified frame {session}:{sequence}]",
+            )
+        )
+
+        if payload.startswith("IBMQ_"):
+            self.handle_ibm_protocol_message(payload)
+        else:
+            self.events.put(
+                ("bridge_log", f"PC: Ignored unsupported framed message: {payload}")
+            )
 
     def send_calliope(self, message: str) -> bool:
         """Send one protocol line without interleaving concurrent IBM jobs."""
