@@ -63,9 +63,11 @@ bereits gestartete serielle Ausgaben des Benutzerprogramms unverändert.
 Im seriellen Protokoll erscheinen zusätzlich kurze `MICROQISKIT_INFO`- und
 `MICROQISKIT_ERROR`-Meldungen. Sie zeigen Übertragung, IBM-Annahme,
 Statusänderungen, Abschluss, Validierungsfehler und Timeouts an.
-Für eigene Ausgaben sollte `serial write line` verwendet werden. Die Erweiterung
-setzt trotzdem vor jeder Protokollnachricht eine neue Zeile, damit ein vorheriges
-`serial write string` die Kommunikation mit dem PC nicht beschädigen kann.
+Für eigene Ausgaben muss `serial write line` verwendet werden. Ein
+`serial write string` beendet die Zeile nicht und kann deshalb mit der nächsten
+Protokollnachricht verschmelzen. Die Erweiterung sendet ihre Protokollzeilen
+einzeln und mit einer kurzen Pause, damit der Calliope-v3-Sendepuffer vollständig
+geleert wird.
 Die Ergebnisblöcke erwarten die lokale Calliope-Job-ID (`job1`, `job2`, ...), die
 vom Startblock zurückgegeben wird, oder direkt die IBM-Runtime-ID aus dem
 PC-Protokoll beziehungsweise der IBM-Workloads-Seite. Bei einer noch unbekannten

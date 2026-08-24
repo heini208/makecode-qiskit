@@ -588,15 +588,9 @@ namespace microQiskitRuntime {
             job.remoteJobId = parts[2]
             job.backend = parts[3]
             job.status = "queued"
-            sendIBMDebug(
-                "INFO",
-                "Job " + job.id + " accepted by IBM as " + job.remoteJobId +
-                " on " + job.backend
-            )
         } else if (messageKind == "IBMQ_STATUS" && parts.length >= 3) {
             job.status = parts[2].toLowerCase()
             job.statusResponseCounter += 1
-            sendIBMDebug("INFO", "Job " + job.id + " status: " + job.status)
         } else if (messageKind == "IBMQ_SHOT" && parts.length >= 3) {
             job.memory = [parts[2]]
         } else if (messageKind == "IBMQ_COUNT" && parts.length >= 4) {
@@ -607,16 +601,11 @@ namespace microQiskitRuntime {
             }
             job.status = "done"
             job.resultResponseCounter += 1
-            sendIBMDebug(
-                "INFO",
-                "Job " + job.id + " completed with " + job.shots + " shots"
-            )
         } else if (messageKind == "IBMQ_ERROR" && parts.length >= 3) {
             job.error = parts[2]
             job.status = "failed"
             job.statusResponseCounter += 1
             job.resultResponseCounter += 1
-            sendIBMDebug("ERROR", "Job " + job.id + ": " + job.error)
         }
     }
 
@@ -628,21 +617,19 @@ namespace microQiskitRuntime {
         ibmSerialInitialized = true
         // USB is MakeCode's default serial route. Reconfiguring the route or
         // transmit buffer here can cut off data the user's program just wrote.
-        // Let an immediately preceding user message leave the default buffer
-        // before enlarging it for the IBM protocol.
-        basic.pause(50)
         serial.setRxBufferSize(512)
-        serial.setTxBufferSize(512)
         serial.onDataReceived("\n", function () {
             handleIBMSerialMessage(serial.readUntil("\n"))
         })
     }
 
     function sendIBMLine(line: string): void {
-        // A user's serial.writeString() may have left an unfinished line.
-        // Send the separator and complete bridge line as one buffered write.
-        serial.writeString("\n" + line + "\n")
-        basic.pause(10)
+        // Also let a user-written line finish before starting the protocol.
+        basic.pause(50)
+        serial.writeLine(line)
+        // The Calliope v3 USB serial implementation can lose queued bytes when
+        // several lines are written back-to-back. Let each line drain first.
+        basic.pause(50)
     }
 
     function sendIBMDebug(level: string, message: string): void {
@@ -1108,7 +1095,6 @@ namespace microQiskitRuntime {
     export function runOnIBMQuantum(circuitId: string, shots: number = 1024): string {
         clearError()
         initializeIBMSerial()
-        sendIBMDebug("INFO", "Preparing IBM Quantum submission")
         const circuit = getCircuit(circuitId)
 
         if (!circuit) {
@@ -1142,11 +1128,6 @@ namespace microQiskitRuntime {
         job.status = "submitting"
         jobs.push(job)
 
-        sendIBMDebug(
-            "INFO",
-            "Sending " + jobId + " with " + circuit.data.length +
-            " operations and " + shots + " shots"
-        )
         sendIBMLine(
             "IBMQ_BEGIN|" + jobId + "|" + circuit.numQubits + "|" +
             circuit.numClbits + "|" + shots
@@ -1161,7 +1142,6 @@ namespace microQiskitRuntime {
         }
 
         sendIBMLine("IBMQ_END|" + jobId)
-        sendIBMDebug("INFO", "Job " + jobId + " sent to PC bridge")
         return jobId
     }
 
@@ -1365,7 +1345,6 @@ namespace microQiskitRuntime {
         }
 
         if (job.source == "ibm") {
-            sendIBMDebug("INFO", "Requesting status for job " + job.id)
             const previousStatusResponseCounter = job.statusResponseCounter
             sendIBMLine("IBMQ_GET_STATUS|" + job.id)
 
@@ -1394,7 +1373,6 @@ namespace microQiskitRuntime {
         ) {
             initializeIBMSerial()
             job.status = "requesting_status"
-            sendIBMDebug("INFO", "Looking up IBM job " + job.remoteJobId)
             sendIBMLine("IBMQ_GET_STATUS|" + job.id)
         }
 
