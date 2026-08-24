@@ -63,8 +63,8 @@ class QiskitBridgeApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Calliope Qiskit Bridge")
-        self.geometry("780x570")
-        self.minsize(680, 500)
+        self.geometry("920x720")
+        self.minsize(760, 620)
 
         self.events: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.ibm_service: Any | None = None
@@ -79,6 +79,7 @@ class QiskitBridgeApp(tk.Tk):
         self.ibm_job_statuses: dict[str, str] = {}
         self.ibm_job_results: dict[str, dict[str, Any]] = {}
         self.ibm_job_aliases: dict[str, str] = {}
+        self.ibm_job_backends: dict[str, str] = {}
         self.ibm_jobs_lock = threading.Lock()
         self.dashboard_visible = False
         self.closing = False
@@ -340,7 +341,7 @@ class QiskitBridgeApp(tk.Tk):
         outer = ttk.Frame(self, padding=22)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(4, weight=1)
+        outer.rowconfigure(6, weight=1)
 
         header = ttk.Frame(outer)
         header.grid(row=0, column=0, sticky="ew")
@@ -406,10 +407,53 @@ class QiskitBridgeApp(tk.Tk):
         )
         self.calliope_connect_button.grid(row=1, column=2)
 
+        jobs_frame = ttk.LabelFrame(outer, text="Known IBM jobs", padding=10)
+        jobs_frame.grid(row=3, column=0, sticky="nsew", pady=(0, 8))
+        jobs_frame.columnconfigure(0, weight=1)
+
+        job_columns = ("calliope_id", "ibm_id", "backend", "status", "cached")
+        self.jobs_table = ttk.Treeview(
+            jobs_frame,
+            columns=job_columns,
+            show="headings",
+            height=5,
+        )
+        self.jobs_table.heading("calliope_id", text="Calliope job")
+        self.jobs_table.heading("ibm_id", text="IBM Runtime ID")
+        self.jobs_table.heading("backend", text="Quantum system")
+        self.jobs_table.heading("status", text="Status")
+        self.jobs_table.heading("cached", text="Result cached")
+        self.jobs_table.column("calliope_id", width=95, stretch=False)
+        self.jobs_table.column("ibm_id", width=205)
+        self.jobs_table.column("backend", width=145)
+        self.jobs_table.column("status", width=145)
+        self.jobs_table.column("cached", width=95, stretch=False, anchor="center")
+        self.jobs_table.grid(row=0, column=0, sticky="nsew")
+
+        jobs_scrollbar = ttk.Scrollbar(
+            jobs_frame,
+            orient="vertical",
+            command=self.jobs_table.yview,
+        )
+        jobs_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.jobs_table.configure(yscrollcommand=jobs_scrollbar.set)
+
+        self.last_sent_var = tk.StringVar(value="Nothing sent yet")
+        ttk.Label(
+            outer,
+            textvariable=self.last_sent_var,
+            wraplength=850,
+            foreground="#444444",
+        ).grid(row=4, column=0, sticky="ew", pady=(0, 7))
+
         log_header = ttk.Frame(outer)
-        log_header.grid(row=3, column=0, sticky="ew", pady=(5, 5))
+        log_header.grid(row=5, column=0, sticky="ew", pady=(5, 5))
         log_header.columnconfigure(0, weight=1)
-        ttk.Label(log_header, text="Messages received", style="Section.TLabel").grid(
+        ttk.Label(
+            log_header,
+            text="Serial communication",
+            style="Section.TLabel",
+        ).grid(
             row=0, column=0, sticky="w"
         )
         ttk.Button(log_header, text="Clear", command=self.clear_log).grid(
@@ -418,12 +462,12 @@ class QiskitBridgeApp(tk.Tk):
 
         self.message_log = ScrolledText(
             outer,
-            height=15,
+            height=11,
             wrap="word",
             state="disabled",
             font=("Consolas", 10),
         )
-        self.message_log.grid(row=4, column=0, sticky="nsew")
+        self.message_log.grid(row=6, column=0, sticky="nsew")
 
         self.refresh_serial_ports()
         self.log_message("IBM Quantum -> PC: Connection verified.")
@@ -444,6 +488,7 @@ class QiskitBridgeApp(tk.Tk):
             self.log_message("Accessible quantum systems: none found")
 
         self.log_message(connection_info["save_message"])
+        self.refresh_jobs_table()
         self.after(250, self.start_auto_discovery)
 
     def refresh_serial_ports(self) -> None:
@@ -903,6 +948,7 @@ class QiskitBridgeApp(tk.Tk):
         remote_job_id = runtime_job.job_id()
         with self.ibm_jobs_lock:
             self.ibm_job_aliases[remote_job_id] = request_id
+            self.ibm_job_backends[request_id] = selected_backend_name
 
         self.send_calliope(
             f"IBMQ_ACCEPTED|{request_id}|{remote_job_id}|{selected_backend_name}"
@@ -995,6 +1041,52 @@ class QiskitBridgeApp(tk.Tk):
         self.message_log.delete("1.0", "end")
         self.message_log.configure(state="disabled")
 
+    def refresh_jobs_table(self) -> None:
+        """Refresh the dashboard from the thread-safe in-memory IBM job cache."""
+        if not self.dashboard_visible or not hasattr(self, "jobs_table"):
+            return
+
+        with self.ibm_jobs_lock:
+            statuses = dict(self.ibm_job_statuses)
+            results = dict(self.ibm_job_results)
+            aliases = dict(self.ibm_job_aliases)
+            backends = dict(self.ibm_job_backends)
+
+        remote_ids_by_key = {
+            cache_key: remote_id for remote_id, cache_key in aliases.items()
+        }
+        known_keys = sorted(set(statuses) | set(results) | set(backends))
+
+        for item_id in self.jobs_table.get_children():
+            self.jobs_table.delete(item_id)
+
+        for cache_key in known_keys:
+            result = results.get(cache_key, {})
+            remote_id = str(
+                result.get("ibm_job_id")
+                or remote_ids_by_key.get(cache_key)
+                or (cache_key if not cache_key.startswith("job") else "")
+            )
+            calliope_id = cache_key if cache_key.startswith("job") else "—"
+            backend = str(
+                result.get("backend") or backends.get(cache_key) or "—"
+            )
+            status = statuses.get(cache_key, "UNKNOWN")
+            readable_status = status.replace("_", " ").title()
+            self.jobs_table.insert(
+                "",
+                "end",
+                values=(
+                    calliope_id,
+                    remote_id or "—",
+                    backend,
+                    readable_status,
+                    "Yes" if cache_key in results else "No",
+                ),
+            )
+
+        self.after(500, self.refresh_jobs_table)
+
     def process_events(self) -> None:
         while True:
             try:
@@ -1071,6 +1163,7 @@ class QiskitBridgeApp(tk.Tk):
         elif event_name == "serial_received":
             self.log_message(f"Calliope -> PC: {payload}")
         elif event_name == "serial_sent":
+            self.last_sent_var.set(f"Last sent to Calliope: {payload}")
             self.log_message(f"PC -> Calliope: {payload}")
         elif event_name == "bridge_log":
             self.log_message(str(payload))

@@ -105,6 +105,11 @@ Backend und IBM-Job-ID im lokalen Speicher des PC-Programms. Weitere Anfragen
 des Calliope werden aus diesem Cache beantwortet und erzeugen keine zusätzliche
 IBM-Abfrage oder erneute Ausführung.
 
+Das Dashboard zeigt alle in der aktuellen Programmsitzung bekannten Jobs mit
+Calliope-ID, IBM-Runtime-ID, Quantensystem, Status und Cache-Zustand. Außerdem
+zeigt **Last sent to Calliope** die letzte Antwort des PC-Programms; im seriellen
+Protokoll bleiben weiterhin beide Kommunikationsrichtungen vollständig sichtbar.
+
 #### Metadaten (verwendet für Suche, Rendering)
 
 * for PXT/calliopemini
