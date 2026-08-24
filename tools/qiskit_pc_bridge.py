@@ -661,7 +661,6 @@ class QiskitBridgeApp(tk.Tk):
     def listen_to_calliope(self, connection: Any) -> None:
         """Read and log newline-delimited Calliope messages until disconnected."""
         pending = bytearray()
-        previewed_length = 0
         last_byte_time = time.monotonic()
 
         while not self.serial_stop.is_set():
@@ -669,15 +668,16 @@ class QiskitBridgeApp(tk.Tk):
             chunk = connection.read(waiting if waiting > 0 else 1)
             if not chunk:
                 if (
-                    len(pending) > previewed_length
+                    pending
                     and time.monotonic() - last_byte_time >= 0.35
                 ):
-                    preview = bytes(pending[previewed_length:]).decode(
-                        "utf-8", errors="replace"
-                    )
+                    # Treat an idle, unterminated write as a complete console
+                    # message. Keeping it here used to append data left by an
+                    # older program (or a reflash) to the next message.
+                    preview = bytes(pending).decode("utf-8", errors="replace")
                     if preview:
                         self.events.put(("serial_partial", preview))
-                    previewed_length = len(pending)
+                    pending.clear()
                 continue
 
             pending.extend(chunk)
@@ -688,23 +688,9 @@ class QiskitBridgeApp(tk.Tk):
                 raw_line = bytes(pending[:newline_index])
                 del pending[: newline_index + 1]
 
-                already_previewed = min(previewed_length, len(raw_line))
-                unpreviewed_tail = raw_line[already_previewed:]
-                previewed_length = max(
-                    0,
-                    previewed_length - (newline_index + 1),
-                )
-
                 message = raw_line.decode("utf-8", errors="replace").strip()
-                if message and already_previewed == 0:
+                if message:
                     self.handle_calliope_serial_message(message)
-                elif unpreviewed_tail.strip():
-                    self.events.put(
-                        (
-                            "serial_partial",
-                            unpreviewed_tail.decode("utf-8", errors="replace").strip(),
-                        )
-                    )
 
                 newline_index = pending.find(b"\n")
 
