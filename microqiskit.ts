@@ -641,7 +641,9 @@ namespace microQiskitRuntime {
         ibmTransportSession = Math.randomRange(100000, 999999)
         // USB is MakeCode's default serial route. Reconfiguring the route or
         // transmit buffer here can cut off data the user's program just wrote.
-        serial.setRxBufferSize(512)
+        // Calliope's serial API uses an 8-bit buffer length and accepts at
+        // most 254 bytes. 512 can wrap to zero and prevent ACK reception.
+        serial.setRxBufferSize(254)
         serial.onDataReceived(
             serial.delimiters(Delimiters.NewLine),
             function () {

@@ -20,22 +20,16 @@ Um dieses Repository in MakeCode zu bearbeiten.
 
 ## Mit IBM Quantum verbinden
 
-Das PC-Programm verbindet Qiskit mit der IBM Quantum Platform. Python 3.10 oder
-neuer wird empfohlen.
+Das separate PC-Programm verbindet Qiskit mit der IBM Quantum Platform. Es wird
+im Repository
+[qiskit_serial_bridge](https://github.com/heini208/qiskit_serial_bridge)
+entwickelt; dieses MakeCode-Repository enthält bewusst keine Kopie davon.
 
-1. Installiere die benötigten Pakete im Projektordner:
-
-   ```shell
-   python -m pip install -r requirements.txt
-   ```
-
-2. Starte die grafische Oberfläche:
-
-   ```shell
-   python tools/qiskit_pc_bridge.py
-   ```
-
-3. Gib deinen [IBM Cloud API Key](https://quantum.cloud.ibm.com/) ein. Die
+1. Lade die passende Anwendung von der
+   [neuesten Bridge-Version](https://github.com/heini208/qiskit_serial_bridge/releases/latest)
+   herunter und starte sie.
+2. Wähle bereits gespeicherte Zugangsdaten oder gib deinen
+   [IBM Cloud API Key](https://quantum.cloud.ibm.com/) ein. Die
    Eingabe ist unsichtbar. Die optionale Service-Instanz und Region können leer
    gelassen werden, damit Qiskit sie automatisch auswählt.
 
