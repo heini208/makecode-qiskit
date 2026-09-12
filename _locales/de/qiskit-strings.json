@@ -82,5 +82,6 @@
     "SerialResultView.Summary|block": "Zusammenfassung",
     "SerialResultView.OneShot|block": "Einzelner Shot",
     "SerialResultView.Counts|block": "Anzahlen",
-    "SerialResultView.Status|block": "Status"
+    "SerialResultView.Status|block": "Status",
+    "microQiskit.applyRotationGateBasic|block": "$gate mit Winkel $theta ° auf Circuit $circuitId an Qubit $qubit anwenden"
 }
