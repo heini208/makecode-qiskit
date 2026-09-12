@@ -26,7 +26,7 @@ namespace microQiskit {
     }
 
     /**
-     * Creates a MicroQiskit quantum circuit. Local simulation on the Calliope supports up to 8 qubits. Real IBM Quantum systems can support circuits with more qubits.
+     * Creates a MicroQiskit quantum circuit with up to 8 qubits for local Calliope simulation. Real IBM Quantum systems can support more qubits, but this extension currently limits circuit creation to 8.
      */
     //% blockId=microqiskit_create_circuit
     //% block="create circuit with $numQubits qubits and $numClbits classical bits"
