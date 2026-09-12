@@ -25,12 +25,14 @@ namespace microQiskit {
         Status
     }
 
-    /** Creates a MicroQiskit quantum circuit. */
+    /**
+     * Creates a MicroQiskit quantum circuit. Local simulation on the Calliope supports up to 8 qubits. Real IBM Quantum systems can support circuits with more qubits.
+     */
     //% blockId=microqiskit_create_circuit
     //% block="create circuit with $numQubits qubits and $numClbits classical bits"
     //% subcategory="Qiskit basic" group="Circuits" weight=100 blockSetVariable=circuit
-    //% numQubits.defl=1
-    //% numClbits.defl=1
+    //% numQubits.min=1 numQubits.max=8 numQubits.defl=1
+    //% numClbits.min=0 numClbits.max=8 numClbits.defl=1
     export function createCircuit(
         numQubits: number = 1,
         numClbits: number = 1
