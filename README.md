@@ -103,7 +103,9 @@ speichert sein Sampler-Ergebnis anschließend im gleichen lokalen Cache.
 Beide Run-Blöcke geben dieselbe Art von Job-ID zurück. Deshalb funktionieren
 die gleichen Ergebnisblöcke für lokale und echte Jobs. Ein lokaler Job ist
 sofort fertig; bei einem IBM-Job kann mit **job is finished** gewartet und mit
-**status of job** der aktuelle Zustand angezeigt werden. Rotationswinkel werden in den MakeCode-Blöcken in Grad angegeben. Der
+**status of job** der aktuelle Zustand angezeigt werden.
+
+Rotationswinkel werden in den MakeCode-Blöcken in Grad angegeben. Der
 **RX**-Block ist direkt unter **Qiskit basic** verfügbar. Die erweiterten
 Rotationsblöcke verwenden ebenfalls Grad und rechnen intern in Radiant um.
 
