@@ -8,7 +8,9 @@
     "files": [
         "microqiskit.ts",
         "main.ts",
-        "README.md"
+        "README.md",
+        "_locales/de/qiskit-strings.json",
+        "_locales/de/qiskit-jsdoc-strings.json"
     ],
     "testFiles": [
         "test.ts"
