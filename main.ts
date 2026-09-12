@@ -12,8 +12,11 @@ namespace microQiskit {
 
     /** Single-qubit rotation gates. */
     export enum RotationGate {
+        //% block="RX"
         RX,
+        //% block="RY"
         RY,
+        //% block="RZ"
         RZ
     }
 
@@ -114,27 +117,11 @@ namespace microQiskit {
     /** Applies a rotation gate selected from the dropdown. The angle is in degrees. */
     //% blockId=microqiskit_apply_rotation_gate
     //% block="apply $gate angle $theta ° to circuit $circuitId on qubit $qubit"
-    //% subcategory="Qiskit advanced" group="Gates" weight=80 inlineInputMode=external blockHidden=true
-    //% circuitId.shadow=variables_get circuitId.defl=circuit
-    //% theta.defl=90
-    //% qubit.min=0 qubit.max=7 qubit.defl=0
-    export function applyRotationGate(
-        circuitId: string,
-        gate: RotationGate = RotationGate.RX,
-        theta: number = 90,
-        qubit: number = 0
-    ): void {
-        applyRotationGateBasic(circuitId, gate, theta, qubit)
-    }
-
-    /** Applies a rotation gate selected from the dropdown. The angle is in degrees. */
-    //% blockId=microqiskit_apply_rotation_gate_basic_v2
-    //% block="apply $gate angle $theta ° to circuit $circuitId on qubit $qubit"
     //% subcategory="Qiskit basic" group="Gates" weight=80
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% theta.defl=90
     //% qubit.min=0 qubit.max=7 qubit.defl=0
-    export function applyRotationGateBasic(
+    export function applyRotationGate(
         circuitId: string,
         gate: RotationGate = RotationGate.RX,
         theta: number = 90,
