@@ -29,8 +29,8 @@ namespace microQiskit {
     //% blockId=microqiskit_create_circuit
     //% block="create circuit with $numQubits qubits and $numClbits classical bits"
     //% subcategory="Qiskit basic" group="Circuits" weight=100 blockSetVariable=circuit
-    //% numQubits.min=1 numQubits.max=8 numQubits.defl=1
-    //% numClbits.min=0 numClbits.max=8 numClbits.defl=1
+    //% numQubits.defl=1
+    //% numClbits.defl=1
     export function createCircuit(
         numQubits: number = 1,
         numClbits: number = 1
@@ -109,25 +109,26 @@ namespace microQiskit {
         }
     }
 
-    /** Applies a rotation gate selected from the dropdown. The angle is in radians. */
+    /** Applies a rotation gate selected from the dropdown. The angle is in degrees. */
     //% blockId=microqiskit_apply_rotation_gate
-    //% block="apply $gate angle $theta to circuit $circuitId on qubit $qubit"
+    //% block="apply $gate angle $theta ° to circuit $circuitId on qubit $qubit"
     //% subcategory="Qiskit advanced" group="Gates" weight=100 inlineInputMode=external
     //% circuitId.shadow=variables_get circuitId.defl=circuit
-    //% theta.defl=1.57079632679
+    //% theta.defl=90
     //% qubit.min=0 qubit.max=7 qubit.defl=0
     export function applyRotationGate(
         circuitId: string,
         gate: RotationGate = RotationGate.RX,
-        theta: number = 1.57079632679,
+        theta: number = 90,
         qubit: number = 0
     ): void {
+        const radians = theta * 3.141592653589793 / 180
         if (gate == RotationGate.RX) {
-            microQiskitRuntime.applyRX(circuitId, theta, qubit)
+            microQiskitRuntime.applyRX(circuitId, radians, qubit)
         } else if (gate == RotationGate.RY) {
-            microQiskitRuntime.applyRY(circuitId, theta, qubit)
+            microQiskitRuntime.applyRY(circuitId, radians, qubit)
         } else {
-            microQiskitRuntime.applyRZ(circuitId, theta, qubit)
+            microQiskitRuntime.applyRZ(circuitId, radians, qubit)
         }
     }
 
@@ -171,49 +172,61 @@ namespace microQiskit {
         microQiskitRuntime.applyH(circuitId, qubit)
     }
 
-    /** Applies an X-axis rotation. The angle is in radians. */
+    /** Applies an X-axis rotation. The angle is in degrees. */
     //% blockId=microqiskit_apply_rx
-    //% block="apply RX angle $theta to circuit $circuitId on qubit $qubit"
-    //% subcategory="Qiskit advanced" group="Gates" weight=80 inlineInputMode=external blockHidden=true
+    //% block="apply RX angle $theta ° to circuit $circuitId on qubit $qubit"
+    //% subcategory="Qiskit basic" group="Gates" weight=80 inlineInputMode=external
     //% circuitId.shadow=variables_get circuitId.defl=circuit
-    //% theta.defl=1.57079632679
+    //% theta.defl=90
     //% qubit.min=0 qubit.max=7 qubit.defl=0
     export function applyRX(
         circuitId: string,
-        theta: number,
+        theta: number = 90,
         qubit: number = 0
     ): void {
-        microQiskitRuntime.applyRX(circuitId, theta, qubit)
+        microQiskitRuntime.applyRX(
+            circuitId,
+            theta * 3.141592653589793 / 180,
+            qubit
+        )
     }
 
-    /** Applies a Y-axis rotation. The angle is in radians. */
+    /** Applies a Y-axis rotation. The angle is in degrees. */
     //% blockId=microqiskit_apply_ry
-    //% block="apply RY angle $theta to circuit $circuitId on qubit $qubit"
+    //% block="apply RY angle $theta ° to circuit $circuitId on qubit $qubit"
     //% subcategory="Qiskit advanced" group="Gates" weight=75 inlineInputMode=external blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
-    //% theta.defl=1.57079632679
+    //% theta.defl=90
     //% qubit.min=0 qubit.max=7 qubit.defl=0
     export function applyRY(
         circuitId: string,
-        theta: number,
+        theta: number = 90,
         qubit: number = 0
     ): void {
-        microQiskitRuntime.applyRY(circuitId, theta, qubit)
+        microQiskitRuntime.applyRY(
+            circuitId,
+            theta * 3.141592653589793 / 180,
+            qubit
+        )
     }
 
-    /** Applies a Z-axis rotation. The angle is in radians. */
+    /** Applies a Z-axis rotation. The angle is in degrees. */
     //% blockId=microqiskit_apply_rz
-    //% block="apply RZ angle $theta to circuit $circuitId on qubit $qubit"
+    //% block="apply RZ angle $theta ° to circuit $circuitId on qubit $qubit"
     //% subcategory="Qiskit advanced" group="Gates" weight=70 inlineInputMode=external blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
-    //% theta.defl=1.57079632679
+    //% theta.defl=90
     //% qubit.min=0 qubit.max=7 qubit.defl=0
     export function applyRZ(
         circuitId: string,
-        theta: number,
+        theta: number = 90,
         qubit: number = 0
     ): void {
-        microQiskitRuntime.applyRZ(circuitId, theta, qubit)
+        microQiskitRuntime.applyRZ(
+            circuitId,
+            theta * 3.141592653589793 / 180,
+            qubit
+        )
     }
 
     /** Applies a controlled X gate. */
@@ -231,21 +244,26 @@ namespace microQiskit {
         microQiskitRuntime.applyCX(circuitId, control, target)
     }
 
-    /** Applies a controlled X-axis rotation. The angle is in radians. */
+    /** Applies a controlled X-axis rotation. The angle is in degrees. */
     //% blockId=microqiskit_apply_crx
-    //% block="apply CRX angle $theta to circuit $circuitId control $control target $target"
+    //% block="apply CRX angle $theta ° to circuit $circuitId control $control target $target"
     //% subcategory="Qiskit advanced" group="Gates" weight=90 inlineInputMode=external
     //% circuitId.shadow=variables_get circuitId.defl=circuit
-    //% theta.defl=1.57079632679
+    //% theta.defl=90
     //% control.min=0 control.max=7 control.defl=0
     //% target.min=0 target.max=7 target.defl=1
     export function applyCRX(
         circuitId: string,
-        theta: number,
+        theta: number = 90,
         control: number = 0,
         target: number = 1
     ): void {
-        microQiskitRuntime.applyCRX(circuitId, theta, control, target)
+        microQiskitRuntime.applyCRX(
+            circuitId,
+            theta * 3.141592653589793 / 180,
+            control,
+            target
+        )
     }
 
     /** Measures one qubit into one classical bit. */
@@ -272,10 +290,28 @@ namespace microQiskit {
         microQiskitRuntime.measureAll(circuitId)
     }
 
-    /** Runs a local MicroQiskit simulation. */
+    /** Runs a local MicroQiskit simulation with 1024 shots. */
+    //% blockId=microqiskit_run_simulation_basic
+    //% block="run circuit $circuitId locally"
+    //% subcategory="Qiskit basic" group="Simulation" weight=100 blockSetVariable=job
+    //% circuitId.shadow=variables_get circuitId.defl=circuit
+    export function runSimulationBasic(circuitId: string): string {
+        return microQiskitRuntime.runSimulation(circuitId, 1024)
+    }
+
+    /** Runs a circuit on real IBM Quantum hardware with 1024 shots. */
+    //% blockId=microqiskit_run_ibm_quantum_basic
+    //% block="run circuit $circuitId on IBM Quantum"
+    //% subcategory="Qiskit basic" group="Simulation" weight=90 blockSetVariable=job
+    //% circuitId.shadow=variables_get circuitId.defl=circuit
+    export function runOnIBMQuantumBasic(circuitId: string): string {
+        return microQiskitRuntime.runOnIBMQuantum(circuitId, 1024)
+    }
+
+    /** Runs a local MicroQiskit simulation with a configurable shot count. */
     //% blockId=microqiskit_run_simulation
     //% block="run circuit $circuitId locally with $shots shots"
-    //% subcategory="Qiskit basic" group="Simulation" weight=100 blockSetVariable=job
+    //% subcategory="Qiskit advanced" group="Simulation" weight=100 blockSetVariable=job
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% shots.min=1 shots.max=2048 shots.defl=1024
     export function runSimulation(
@@ -285,10 +321,10 @@ namespace microQiskit {
         return microQiskitRuntime.runSimulation(circuitId, shots)
     }
 
-    /** Runs a circuit on real IBM Quantum hardware through the connected PC app. */
+    /** Runs a circuit on real IBM Quantum hardware with a configurable shot count. */
     //% blockId=microqiskit_run_ibm_quantum
     //% block="run circuit $circuitId on IBM Quantum with $shots shots"
-    //% subcategory="Qiskit basic" group="Simulation" weight=90 blockSetVariable=job
+    //% subcategory="Qiskit advanced" group="Simulation" weight=95 blockSetVariable=job
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% shots.min=1 shots.max=2048 shots.defl=1024
     export function runOnIBMQuantum(
@@ -444,10 +480,19 @@ namespace microQiskit {
         microQiskitRuntime.printJobToSerial(jobId, view)
     }
 
+    /** Returns one shot as a single bit string. */
+    //% blockId=microqiskit_job_result_text
+    //% block="bits as text from job $jobId"
+    //% subcategory="Qiskit basic" group="Results" weight=100
+    //% jobId.shadow=variables_get jobId.defl=job
+    export function getJobResultText(jobId: string): string {
+        return microQiskitRuntime.getJobResultText(jobId)
+    }
+
     /** Returns one shot as a list with classical bit 0 first. */
     //% blockId=microqiskit_job_result
     //% block="bit list result from job $jobId"
-    //% subcategory="Qiskit basic" group="Results" weight=100
+    //% subcategory="Qiskit advanced" group="Results" weight=100
     //% jobId.shadow=variables_get jobId.defl=job
     export function getJobResult(jobId: string): number[] {
         return microQiskitRuntime.getJobResult(jobId)
