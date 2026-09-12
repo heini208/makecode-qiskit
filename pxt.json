@@ -20,5 +20,6 @@
     "supportedTargets": [
         "calliopemini"
     ],
-    "preferredEditor": "tsprj"
+    "preferredEditor": "tsprj",
+    "version": "0.1.0"
 }
