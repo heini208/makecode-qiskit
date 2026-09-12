@@ -25,13 +25,34 @@ im Repository
 [qiskit_serial_bridge](https://github.com/heini208/qiskit_serial_bridge)
 entwickelt; dieses MakeCode-Repository enthält bewusst keine Kopie davon.
 
+### IBM Quantum Konto einrichten
+
+Für echte Quantum-Jobs wird ein IBM Cloud Konto mit Zugriff auf IBM Quantum
+Compute benötigt.
+
+1. Öffne die [IBM Quantum Platform](https://quantum.cloud.ibm.com/) und melde
+   dich mit einem IBM Cloud Konto an. Falls noch kein Konto existiert, erstelle
+   dort zuerst eines.
+2. Öffne in der IBM Quantum Platform den Bereich **Instances**. Falls noch keine
+   Quantum-Compute-Instanz vorhanden ist, erstelle eine Instanz. Für den
+   kostenlosen Open-Plan muss dabei die Region **us-east** verwendet werden.
+3. Erstelle anschließend auf dem Dashboard einen **API key** und kopiere ihn an
+   einen sicheren Ort. Der Schlüssel wird nach der Erstellung nicht erneut
+   vollständig angezeigt.
+4. Optional kannst du unter **Instances** den CRN der gewünschten Instanz
+   kopieren. Die Bridge kann die Instanz aber auch automatisch auswählen, wenn
+   das Feld leer bleibt.
+5. Teile den API Key niemals in MakeCode-Projekten, Git-Repositories oder
+   Screenshots.
+
+### Bridge starten
+
 1. Lade die passende Anwendung von der
    [neuesten Bridge-Version](https://github.com/heini208/qiskit_serial_bridge/releases/latest)
    herunter und starte sie.
-2. Wähle bereits gespeicherte Zugangsdaten oder gib deinen
-   [IBM Cloud API Key](https://quantum.cloud.ibm.com/) ein. Die
-   Eingabe ist unsichtbar. Die optionale Service-Instanz und Region können leer
-   gelassen werden, damit Qiskit sie automatisch auswählt.
+2. Wähle bereits gespeicherte Zugangsdaten oder gib deinen IBM Cloud API Key
+   ein. Die Eingabe ist unsichtbar. Die optionale Service-Instanz und Region
+   können leer gelassen werden, damit Qiskit sie automatisch auswählt.
 
 Der Key wird nur gespeichert, wenn du dies ausdrücklich bestätigst. Qiskit
 speichert ihn dann unverschlüsselt in deinem Benutzerkonto; verwende diese
@@ -48,8 +69,10 @@ beantwortet, ist aber nicht erforderlich.
 
 ### Lokale und echte IBM-Jobs
 
-Der Block **run circuit locally** simuliert den Schaltkreis sofort auf dem
-Calliope. Der Block **run circuit on IBM Quantum** sendet denselben Schaltkreis
+Die Basic-Blöcke **run circuit locally** und **run circuit on IBM Quantum**
+verwenden automatisch 1024 Shots. In **Qiskit advanced** stehen Varianten mit
+frei wählbarer Shot-Anzahl zur Verfügung. Der lokale Block simuliert den
+Schaltkreis sofort auf dem Calliope. Der IBM-Block sendet denselben Schaltkreis
 über USB an das PC-Programm und startet dort einen echten `SamplerV2`-Job. Das
 PC-Programm muss dafür geöffnet und mit IBM sowie dem Calliope verbunden sein.
 Die Erweiterung verwendet die standardmäßige USB-Seriell-Verbindung und lässt
@@ -80,8 +103,13 @@ speichert sein Sampler-Ergebnis anschließend im gleichen lokalen Cache.
 Beide Run-Blöcke geben dieselbe Art von Job-ID zurück. Deshalb funktionieren
 die gleichen Ergebnisblöcke für lokale und echte Jobs. Ein lokaler Job ist
 sofort fertig; bei einem IBM-Job kann mit **job is finished** gewartet und mit
-**status of job** der aktuelle Zustand angezeigt werden. Bei nur einem Shot ist
-**bit list result** ein einzelnes echtes Messergebnis des IBM-Quantencomputers.
+**status of job** der aktuelle Zustand angezeigt werden. Rotationswinkel werden in den MakeCode-Blöcken in Grad angegeben. Der
+**RX**-Block ist direkt unter **Qiskit basic** verfügbar. Die erweiterten
+Rotationsblöcke verwenden ebenfalls Grad und rechnen intern in Radiant um.
+
+Mit **bits as text** wird ein einzelnes Messergebnis direkt als Bit-String wie
+`0`, `1` oder `0101` zurückgegeben. Der bisherige Block **bit list result**
+liegt in **Qiskit advanced** und liefert dasselbe Einzelergebnis als Zahlenliste.
 
 Mit **print summary for job to serial** lassen sich Ergebnisse ohne LED-Matrix
 lesbar ausgeben. Das Dropdown bietet außerdem **One shot**, **Counts** und
