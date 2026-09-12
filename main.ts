@@ -114,7 +114,7 @@ namespace microQiskit {
     /** Applies a rotation gate selected from the dropdown. The angle is in degrees. */
     //% blockId=microqiskit_apply_rotation_gate
     //% block="apply $gate angle $theta ° to circuit $circuitId on qubit $qubit"
-    //% subcategory="Qiskit advanced" group="Gates" weight=80 inlineInputMode=external blockHidden=true
+    //% subcategory="Qiskit basic" group="Gates" weight=80 inlineInputMode=external
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% theta.defl=90
     //% qubit.min=0 qubit.max=7 qubit.defl=0
@@ -177,7 +177,7 @@ namespace microQiskit {
     /** Applies an X-axis rotation. The angle is in degrees. */
     //% blockId=microqiskit_apply_rx
     //% block="apply RX angle $theta ° to circuit $circuitId on qubit $qubit"
-    //% subcategory="Qiskit basic" group="Gates" weight=80 inlineInputMode=external
+    //% subcategory="Qiskit advanced" group="Gates" weight=80 inlineInputMode=external blockHidden=true
     //% circuitId.shadow=variables_get circuitId.defl=circuit
     //% theta.defl=90
     //% qubit.min=0 qubit.max=7 qubit.defl=0
