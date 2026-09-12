@@ -1540,7 +1540,14 @@ namespace microQiskitRuntime {
             return ""
         }
 
-        return job.memory[0]
+        const bitString = job.memory[0]
+        let result = ""
+
+        for (let bit = 0; bit < bitString.length; bit++) {
+            result = result + bitString.charAt(bitString.length - 1 - bit)
+        }
+
+        return result
     }
 
     export function getJobResult(jobId: string): number[] {
