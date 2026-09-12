@@ -52,6 +52,5 @@
     "microQiskit.initializeState": "Ersetzt einen Circuit durch einen normierten komplexen Anfangszustand.",
     "microQiskit.getJobStatevectorReal": "Gibt den reellen Anteil des mit einem Job gespeicherten Zustandsvektors zurück.",
     "microQiskit.getJobStatevectorImaginary": "Gibt den imaginären Anteil des mit einem Job gespeicherten Zustandsvektors zurück.",
-    "microQiskit.getLastError": "Gibt den zuletzt aufgetretenen MicroQiskit-Fehler zurück oder einen leeren Text.",
-    "microQiskit.applyRotationGateBasic": "Wendet das im Dropdown ausgewählte Rotationsgatter an. Der Winkel wird in Grad angegeben."
+    "microQiskit.getLastError": "Gibt den zuletzt aufgetretenen MicroQiskit-Fehler zurück oder einen leeren Text."
 }
