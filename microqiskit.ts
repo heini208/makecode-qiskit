@@ -1528,6 +1528,21 @@ namespace microQiskitRuntime {
         return job ? copyNumberArray(job.stateImaginary) : []
     }
 
+    export function getJobResultText(jobId: string): string {
+        clearError()
+        const job = getJobForIBMRequest(jobId)
+
+        if (
+            !job ||
+            !waitForIBMResult(job, IBM_RESULT_TIMEOUT_TENTHS) ||
+            job.memory.length == 0
+        ) {
+            return ""
+        }
+
+        return job.memory[0]
+    }
+
     export function getJobResult(jobId: string): number[] {
         clearError()
         const job = getJobForIBMRequest(jobId)
